@@ -97,7 +97,7 @@ def generate_trend_chart(
         return ""
 
     values = [h.get("value", 0) for h in history]
-    dates = [h.get("date", str(i)) for i in range(len(history))]
+    dates = [str(i) for i in range(len(history))]
     x = list(range(len(values)))
 
     fig, ax = plt.subplots(figsize=(10, 4))

@@ -11,6 +11,13 @@ load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
+def _rerun():
+    if hasattr(st, "rerun"):
+        st.rerun()
+    else:
+        st.experimental_rerun()
+
 import src.api_client as api_client
 from src.api_client import get_puuid, get_match_history, get_match_details
 from src.metrics import calculate_metrics, aggregate_metrics, extract_match_extra, calculate_map_hero_breakdown
@@ -18,8 +25,20 @@ from src.baseline import load_baseline
 from src.diagnosis import diagnose, diagnose_map_hero_weakness
 from src.report_generator import generate_report
 import src.database as db
-from src.payment import create_checkout_session, verify_payment
-from src.mailer import send_report_email
+try:
+    from src.payment import create_checkout_session, verify_payment
+    PAYMENT_AVAILABLE = True
+except Exception:
+    create_checkout_session = None
+    verify_payment = None
+    PAYMENT_AVAILABLE = False
+
+try:
+    from src.mailer import send_report_email
+    MAILER_AVAILABLE = True
+except Exception:
+    send_report_email = None
+    MAILER_AVAILABLE = False
 
 ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",")
 
@@ -116,7 +135,7 @@ if st.session_state.user:
     if st.sidebar.button("🚪 退出登录"):
         st.session_state.user = None
         st.session_state.page = "analysis"
-        st.rerun()
+        _rerun()
 else:
     with st.sidebar.expander("登录 / 注册", expanded=True):
         tab1, tab2 = st.tabs(["登录", "注册"])
@@ -128,7 +147,7 @@ else:
                 if user:
                     st.session_state.user = user
                     st.success("登录成功")
-                    st.rerun()
+                    _rerun()
                 else:
                     st.error("邮箱或密码错误")
         with tab2:
@@ -191,11 +210,11 @@ if st.session_state.page == "history" and st.session_state.user:
         st.info("暂无历史报告，快去生成一份吧！")
         if st.button("返回分析页"):
             st.session_state.page = "analysis"
-            st.rerun()
+            _rerun()
     st.markdown("---")
     if st.button("⬅️ 返回分析"):
         st.session_state.page = "analysis"
-        st.rerun()
+        _rerun()
 
 elif st.session_state.page == "analysis":
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
@@ -366,7 +385,7 @@ elif st.session_state.page == "analysis":
                         progress_bar.empty()
                         status_text.empty()
 
-    if st.session_state.report_html and not paid_user and st.session_state.user:
+    if st.session_state.report_html and not paid_user and st.session_state.user and PAYMENT_AVAILABLE:
         st.markdown("---")
         st.markdown("### 🔓 解锁完整报告")
         st.info("注册用户可查看完整报告、历史记录和邮箱发送功能。")
