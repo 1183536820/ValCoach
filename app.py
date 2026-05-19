@@ -128,17 +128,17 @@ st.set_page_config(
     layout="centered",
 )
 
-_raw_param = None
-try:
-    if hasattr(st, "query_params"):
-        _raw_param = st.query_params.get("raw")
-    else:
-        _raw_param = st.experimental_get_query_params().get("raw", [None])[0]
-except Exception:
-    pass
-if _raw_param and str(_raw_param) == "riot" and RIO_TXT_CONTENT:
-    st.markdown(f"```\n{RIO_TXT_CONTENT}\n```")
-    st.stop()
+# Detect /riot.txt in URL path and show raw content
+if RIO_TXT_CONTENT:
+    st.markdown(f"""
+    <script>
+        const p = window.location.pathname;
+        if (p.includes("riot.txt")) {{
+            document.body.innerHTML = '<pre style="font-size:24px;padding:40px;background:#0f0c29;color:#e0e0e0;min-height:100vh;margin:0;">{RIO_TXT_CONTENT}</pre>';
+            document.title = "riot.txt";
+        }}
+    </script>
+    """, unsafe_allow_html=True)
 
 st.markdown("""
 <meta name="description" content="ValCoach - 《无畏契约》AI 赛后诊断工具。分析你的排位赛数据，找出短板，提升段位。">
