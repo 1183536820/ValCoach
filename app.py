@@ -122,7 +122,13 @@ db.init_db()
 admin_id = db.seed_admin_account()
 logger.info(f"Admin account ready (id={admin_id})")
 
-# --- Serve riot.txt publicly at ?raw=riot (before set_page_config to avoid theme flash) ---
+st.set_page_config(
+    page_title="ValCoach - 《无畏契约》AI 教练",
+    page_icon="🎯",
+    layout="centered",
+)
+
+# Serve riot.txt publicly at ?raw=riot (fallback access method)
 if RIO_TXT_CONTENT:
     try:
         if st.query_params.get("raw") == "riot":
@@ -139,25 +145,6 @@ if RIO_TXT_CONTENT:
                 st.stop()
         except Exception:
             pass
-
-st.set_page_config(
-    page_title="ValCoach - 《无畏契约》AI 教练",
-    page_icon="🎯",
-    layout="centered",
-)
-
-# JS redirect: /riot.txt → ?raw=riot (for users who visit the path directly)
-if RIO_TXT_CONTENT:
-    st.markdown("""
-<script>
-(function() {
-    var p = window.location.pathname.replace(/\\/+/g, '/');
-    if (p.endsWith('/riot.txt') && window.location.search.indexOf('raw=riot') === -1) {
-        window.location.replace(window.location.origin + '/?raw=riot');
-    }
-})();
-</script>
-""", unsafe_allow_html=True)
 
 st.markdown("""
 <meta name="description" content="ValCoach - 《无畏契约》AI 赛后诊断工具。分析你的排位赛数据，找出短板，提升段位。">
