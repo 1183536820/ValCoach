@@ -1,6 +1,5 @@
 import io
 import base64
-import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -25,7 +24,6 @@ def _normalize_metrics(
         if baseline_val == 0:
             normalized[key] = 0.5
         else:
-            # Cap at 200% to avoid extreme values distorting the chart
             normalized[key] = min(player_val / baseline_val, 2.0)
     return normalized
 
@@ -78,12 +76,55 @@ def _build_radar_chart_base64(
 
     ax.set_title("能力雷达图 - 玩家 vs 高分基准", color="#e0e0e0", fontsize=14, pad=20)
     ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=10, labelcolor="#e0e0e0")
-
-    # Add gridlines
     ax.grid(color="#333333", linewidth=0.5)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="#1a1a2e")
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode("utf-8")
+    plt.close(fig)
+
+    return img_base64
+
+
+def generate_trend_chart(
+    history: List[Dict[str, Any]],
+    metric_name: str,
+    metric_label: str,
+    baseline_value: float = None
+) -> str:
+    if not history:
+        return ""
+
+    values = [h.get("value", 0) for h in history]
+    dates = [h.get("date", str(i)) for i in range(len(history))]
+    x = list(range(len(values)))
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    fig.patch.set_facecolor("#1a1a2e")
+    ax.set_facecolor("#1a1a2e")
+
+    ax.plot(x, values, "-o", color="#e74c3c", linewidth=2, markersize=4, label=metric_label)
+
+    if baseline_value is not None:
+        ax.axhline(y=baseline_value, color="#4a90d9", linestyle="--", linewidth=1.5, label=f"基准值 {baseline_value}")
+
+    ax.fill_between(x, values, alpha=0.1, color="#e74c3c")
+
+    ax.set_xlabel("比赛场次 (按时间)", color="#888888", fontsize=10)
+    ax.set_ylabel(metric_label, color="#888888", fontsize=10)
+    ax.set_title(f"{metric_label} 趋势", color="#e0e0e0", fontsize=13)
+
+    ax.tick_params(colors="#888888")
+    ax.spines["bottom"].set_color("#333333")
+    ax.spines["top"].set_color("#333333")
+    ax.spines["left"].set_color("#333333")
+    ax.spines["right"].set_color("#333333")
+    ax.grid(color="#333333", linewidth=0.5, alpha=0.5)
+    ax.legend(fontsize=10, labelcolor="#e0e0e0")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=120, bbox_inches="tight", facecolor="#1a1a2e")
     buf.seek(0)
     img_base64 = base64.b64encode(buf.read()).decode("utf-8")
     plt.close(fig)
@@ -96,7 +137,9 @@ def generate_report(
     player_metrics: Dict[str, float],
     diagnosis_results: List[Dict[str, Any]],
     baseline_metrics: Dict[str, Any],
-    acs_trend: Optional[List[float]] = None,
+    acs_trend: Optional[List[Dict[str, Any]]] = None,
+    kast_trend: Optional[List[Dict[str, Any]]] = None,
+    map_hero_results: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     radar_img = _build_radar_chart_base64(player_metrics, baseline_metrics)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -106,12 +149,14 @@ def generate_report(
         if key in player_metrics:
             player_val = player_metrics[key]
             label = METRIC_LABELS.get(key, key)
+            gap_pct = round((player_val - float(baseline_val)) / float(baseline_val) * 100, 1) if float(baseline_val) != 0 else 0
+            sign = "+" if player_val >= float(baseline_val) else ""
             metrics_rows += f"""
             <tr>
                 <td>{label}</td>
                 <td>{player_val}</td>
                 <td>{baseline_val}</td>
-                <td>{'+' if player_val >= float(baseline_val) else ''}{round((player_val - float(baseline_val)) / float(baseline_val) * 100, 1)}%</td>
+                <td>{sign}{gap_pct}%</td>
             </tr>"""
 
     diagnosis_html = ""
@@ -137,6 +182,44 @@ def generate_report(
         <div class="chart-container">
             <img src="data:image/png;base64,{radar_img}" alt="雷达图" style="max-width: 100%; height: auto;">
         </div>"""
+
+    trend_html = ""
+    if acs_trend:
+        acs_baseline = baseline_metrics.get("ACS", 250)
+        trend_img = generate_trend_chart(acs_trend, "ACS", "ACS", baseline_value=acs_baseline)
+        if trend_img:
+            trend_html += f"""
+            <h2 class="section-title">近期趋势</h2>
+            <div class="chart-container">
+                <img src="data:image/png;base64,{trend_img}" alt="ACS趋势图" style="max-width: 100%; height: auto;">
+            </div>"""
+
+    if kast_trend:
+        kast_baseline = baseline_metrics.get("KAST", 72)
+        trend_img = generate_trend_chart(kast_trend, "KAST", "KAST (%)", baseline_value=kast_baseline)
+        if trend_img:
+            trend_html += f"""
+            <div class="chart-container">
+                <img src="data:image/png;base64,{trend_img}" alt="KAST趋势图" style="max-width: 100%; height: auto;">
+            </div>"""
+
+    map_hero_html = ""
+    if map_hero_results:
+        items = ""
+        for mh in map_hero_results:
+            items += f"""
+            <div class="diagnosis-card" style="border-left: 4px solid #e67e22;">
+                <div class="diagnosis-header">
+                    <span class="metric-name">{mh['map_name']} - {mh['agent']}</span>
+                    <span class="gap-badge" style="background: #e67e2220; color: #e67e22;">
+                        ACS {mh['avg_acs']} | {mh['match_count']}场
+                    </span>
+                </div>
+                <div class="diagnosis-advice">{mh['advice']}</div>
+            </div>"""
+        map_hero_html = f"""
+        <h2 class="section-title">地图/英雄专项诊断</h2>
+        {items}"""
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -175,97 +258,21 @@ def generate_report(
             -webkit-text-fill-color: transparent;
             margin-bottom: 8px;
         }}
-        .header .subtitle {{
-            color: #888;
-            font-size: 14px;
-        }}
-        .header .player-id {{
-            font-size: 20px;
-            color: #e0e0e0;
-            margin-top: 12px;
-        }}
-        .section-title {{
-            font-size: 20px;
-            margin: 30px 0 20px;
-            color: #e0e0e0;
-            padding-left: 12px;
-            border-left: 3px solid #ff4655;
-        }}
-        .chart-container {{
-            display: flex;
-            justify-content: center;
-            margin: 20px 0;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 12px;
-            padding: 20px;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 12px;
-            overflow: hidden;
-        }}
-        th {{
-            background: rgba(255, 70, 85, 0.15);
-            padding: 12px 16px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 14px;
-            color: #ccc;
-        }}
-        td {{
-            padding: 12px 16px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 14px;
-        }}
-        tr:hover {{
-            background: rgba(255, 255, 255, 0.03);
-        }}
-        .diagnosis-card {{
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 10px;
-            padding: 20px;
-            margin: 16px 0;
-        }}
-        .diagnosis-header {{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }}
-        .metric-name {{
-            font-size: 18px;
-            font-weight: 600;
-            color: #e0e0e0;
-        }}
-        .gap-badge {{
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-        }}
-        .diagnosis-detail {{
-            font-size: 13px;
-            color: #888;
-            margin-bottom: 10px;
-        }}
-        .diagnosis-advice {{
-            font-size: 14px;
-            line-height: 1.6;
-            color: #ccc;
-        }}
-        .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-            line-height: 1.8;
-        }}
+        .header .subtitle {{ color: #888; font-size: 14px; }}
+        .header .player-id {{ font-size: 20px; color: #e0e0e0; margin-top: 12px; }}
+        .section-title {{ font-size: 20px; margin: 30px 0 20px; color: #e0e0e0; padding-left: 12px; border-left: 3px solid #ff4655; }}
+        .chart-container {{ display: flex; justify-content: center; margin: 20px 0; background: rgba(0, 0, 0, 0.2); border-radius: 12px; padding: 20px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; background: rgba(0, 0, 0, 0.2); border-radius: 12px; overflow: hidden; }}
+        th {{ background: rgba(255, 70, 85, 0.15); padding: 12px 16px; text-align: left; font-weight: 600; font-size: 14px; color: #ccc; }}
+        td {{ padding: 12px 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 14px; }}
+        tr:hover {{ background: rgba(255, 255, 255, 0.03); }}
+        .diagnosis-card {{ background: rgba(0, 0, 0, 0.2); border-radius: 10px; padding: 20px; margin: 16px 0; }}
+        .diagnosis-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }}
+        .metric-name {{ font-size: 18px; font-weight: 600; color: #e0e0e0; }}
+        .gap-badge {{ display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; }}
+        .diagnosis-detail {{ font-size: 13px; color: #888; margin-bottom: 10px; }}
+        .diagnosis-advice {{ font-size: 14px; line-height: 1.6; color: #ccc; }}
+        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center; font-size: 12px; color: #666; line-height: 1.8; }}
     </style>
 </head>
 <body>
@@ -277,6 +284,7 @@ def generate_report(
         </div>
 
         {radar_html}
+        {trend_html}
 
         <h2 class="section-title">指标对比</h2>
         <table>
@@ -295,6 +303,8 @@ def generate_report(
 
         <h2 class="section-title">核心短板分析</h2>
         {diagnosis_html if diagnosis_html else '<p style="color: #27ae60; text-align: center; padding: 20px;">所有指标均达到或超过基准水平！继续保持！</p>'}
+
+        {map_hero_html}
 
         <div class="footer">
             <p>本报告由 AI 生成，仅供参考。</p>

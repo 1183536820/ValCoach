@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+data/player_history.db
+reports/*.html
+*.pyc

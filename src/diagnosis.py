@@ -39,7 +39,6 @@ def diagnose(
 
         gaps.append({"metric": metric, "gap": gap, "value": player_value, "baseline": float(baseline_value)})
 
-    # Sort by gap ascending (worst first) and take bottom 3
     gaps.sort(key=lambda x: x["gap"])
     worst_gaps = [g for g in gaps if g["gap"] < 0][:3]
 
@@ -55,3 +54,27 @@ def diagnose(
         })
 
     return results
+
+
+def diagnose_map_hero_weakness(
+    breakdown_data: Dict[str, Dict[str, Dict[str, float]]],
+    global_avg_acs: float = 200.0
+) -> List[Dict[str, Any]]:
+    results = []
+    for map_name, agents in breakdown_data.items():
+        for agent, stats in agents.items():
+            match_count = stats.get("match_count", 0)
+            if match_count >= 3:
+                avg_acs = stats.get("avg_acs", 0)
+                if avg_acs < global_avg_acs * 0.85:
+                    results.append({
+                        "map_name": map_name,
+                        "agent": agent,
+                        "avg_acs": avg_acs,
+                        "match_count": match_count,
+                        "gap": round((avg_acs - global_avg_acs) / global_avg_acs * 100, 2),
+                        "advice": f"你在{map_name}使用{agent}时表现不佳（平均ACS {avg_acs}），建议观看该地图该英雄的Pro VOD进行针对性学习。",
+                    })
+
+    results.sort(key=lambda x: x["avg_acs"])
+    return results[:5]
