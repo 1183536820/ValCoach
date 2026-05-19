@@ -285,3 +285,19 @@ def update_user_tier(user_id: int, tier: str):
             "UPDATE users SET tier = ? WHERE id = ?",
             (tier, user_id)
         )
+
+
+def seed_admin_account():
+    with _get_conn() as conn:
+        cursor = conn.execute("SELECT id FROM users WHERE email = ?", ("admin@valcoach.gg",))
+        row = cursor.fetchone()
+        if row:
+            hashed = generate_password_hash("admin123")
+            conn.execute("UPDATE users SET password = ?, tier = 'admin' WHERE id = ?", (hashed, row["id"]))
+            return row["id"]
+        hashed = generate_password_hash("admin123")
+        cursor = conn.execute(
+            "INSERT INTO users (email, password, tier) VALUES (?, ?, 'admin')",
+            ("admin@valcoach.gg", hashed)
+        )
+        return cursor.lastrowid

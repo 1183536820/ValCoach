@@ -45,6 +45,15 @@ except Exception:
     MAILER_AVAILABLE = False
 
 ADMIN_EMAILS = os.getenv("ADMIN_EMAILS", "").split(",")
+ADMIN_EMAILS = [e.strip() for e in ADMIN_EMAILS if e.strip()]
+
+
+def _has_full_access(user) -> bool:
+    if user is None:
+        return False
+    if user.get("tier") == "admin" or user.get("email") in ADMIN_EMAILS:
+        return True
+    return db.has_user_paid(user["id"])
 
 
 def _get_demo_metrics():
@@ -74,11 +83,11 @@ def _guess_tier(avg_acs: float) -> str:
     return best
 
 
-def _generate_demo_report(game_name, tag_line, baseline_data):
+def _generate_demo_report(game_name, tag_line, baseline_data, is_full=False):
     all_metrics = _get_demo_metrics()
     avg_metrics = aggregate_metrics(all_metrics)
     diagnosis_results = diagnose(avg_metrics, baseline_data)
-    strength_results = diagnose_strengths(avg_metrics, baseline_data)
+    strength_results = diagnose_strengths(avg_metrics, baseline_data) if is_full else []
 
     demo_history = [{"value": m["ACS"], "date": f"场次{i+1}"} for i, m in enumerate(all_metrics)]
     demo_kast = [{"value": m["KAST"], "date": f"场次{i+1}"} for i, m in enumerate(all_metrics)]
@@ -96,15 +105,17 @@ def _generate_demo_report(game_name, tag_line, baseline_data):
         player_metrics=avg_metrics,
         diagnosis_results=diagnosis_results,
         baseline_metrics=baseline_data,
-        acs_trend=demo_history,
-        kast_trend=demo_kast,
-        map_hero_results=map_hero_results,
-        strength_results=strength_results,
+        acs_trend=demo_history if is_full else None,
+        kast_trend=demo_kast if is_full else None,
+        map_hero_results=map_hero_results if is_full else None,
+        strength_results=strength_results if is_full else None,
     )
     return html_report, avg_metrics, all_metrics, strength_results
 
 
 db.init_db()
+admin_id = db.seed_admin_account()
+logger.info(f"Admin account ready (id={admin_id})")
 
 st.set_page_config(
     page_title="ValCoach - 《无畏契约》AI 教练",
@@ -132,6 +143,9 @@ st.markdown("""
     .step-card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; text-align: center; }
     .step-card h4 { color: #ff4655; font-size: 1.5rem; }
     .step-card p { color: #ccc; font-size: 0.9rem; }
+    .premium-lock { background: rgba(255,70,85,0.08); border-radius: 12px; padding: 30px; text-align: center; margin: 20px 0; border: 1px dashed #ff4655; }
+    .feature-list { list-style: none; padding: 0; }
+    .feature-list li { padding: 8px 0; color: #ccc; font-size: 14px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -151,7 +165,11 @@ if "report_strengths" not in st.session_state:
 st.sidebar.markdown("## 🔐 账户")
 
 if st.session_state.user:
-    st.sidebar.success(f"欢迎, {st.session_state.user['email']}")
+    tier_label = st.session_state.user.get("tier", "免费")
+    display = f"欢迎, {st.session_state.user['email']}"
+    if tier_label == "admin":
+        display += " 👑"
+    st.sidebar.success(display)
     col_a, col_b = st.sidebar.columns(2)
     if col_a.button("📊 分析"):
         st.session_state.page = "analysis"
@@ -218,6 +236,11 @@ ValCoach 是一款基于 AI 的《无畏契约》赛后诊断工具。
 - 🗺️ 地图/英雄专项分析
 """)
 
+if not st.session_state.user:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 👑 管理员体验账号")
+    st.sidebar.info("邮箱: `admin@valcoach.gg`\n密码: `admin123`")
+
 if st.session_state.page == "history" and st.session_state.user:
     st.markdown("# 📋 我的历史报告")
     reports = db.get_user_reports(st.session_state.user["id"])
@@ -250,7 +273,11 @@ elif st.session_state.page == "analysis":
     st.markdown("</div>", unsafe_allow_html=True)
 
     if st.session_state.user:
-        st.info(f"👋 欢迎回来，{st.session_state.user['email']}")
+        tier_label = st.session_state.user.get("tier", "免费")
+        if tier_label == "admin":
+            st.info(f"👑 管理员已登录，所有功能已解锁")
+        else:
+            st.info(f"👋 欢迎回来，{st.session_state.user['email']}")
 
     st.markdown("""
     <div style="text-align:center; margin: 12px 0; padding: 12px; background: rgba(255,70,85,0.05); border-radius: 8px;">
@@ -313,6 +340,7 @@ elif st.session_state.page == "analysis":
         if not game_name or not tag_line:
             st.error("请同时输入游戏ID和Tagline。")
         else:
+            is_full = _has_full_access(st.session_state.user)
             if demo_mode:
                 progress_bar = st.progress(0, text="正在准备演示数据...")
                 status_text = st.empty()
@@ -321,7 +349,7 @@ elif st.session_state.page == "analysis":
                     progress_bar.progress(30)
                     time.sleep(0.5)
                     baseline_data = load_baseline()
-                    html_report, avg_metrics, all_metrics, strengths = _generate_demo_report(game_name, tag_line, baseline_data)
+                    html_report, avg_metrics, all_metrics, strengths = _generate_demo_report(game_name, tag_line, baseline_data, is_full=is_full)
                     progress_bar.progress(85)
                     status_text.info("正在生成报告...")
                     player_display_id = f"{game_name}#{tag_line}"
@@ -423,7 +451,7 @@ elif st.session_state.page == "analysis":
                             baseline_data = load_baseline(tier=tier)
 
                             diagnosis_results = diagnose(avg_metrics, baseline_data)
-                            strength_results = diagnose_strengths(avg_metrics, baseline_data)
+                            strength_results = diagnose_strengths(avg_metrics, baseline_data) if is_full else []
 
                             breakdown_data = calculate_map_hero_breakdown(all_match_extras)
                             map_hero_results = diagnose_map_hero_weakness(breakdown_data, global_avg_acs=avg_metrics.get("ACS", 200))
@@ -444,9 +472,9 @@ elif st.session_state.page == "analysis":
                                 player_metrics=avg_metrics,
                                 diagnosis_results=diagnosis_results,
                                 baseline_metrics=baseline_data,
-                                acs_trend=acs_history,
-                                kast_trend=kast_history,
-                                map_hero_results=map_hero_results,
+                                acs_trend=acs_history if is_full else None,
+                                kast_trend=kast_history if is_full else None,
+                                map_hero_results=map_hero_results if is_full else None,
                                 strength_results=strength_results,
                             )
                             st.session_state.report_html = html_report
@@ -489,15 +517,47 @@ elif st.session_state.page == "analysis":
                         progress_bar.empty()
                         status_text.empty()
 
-    if st.session_state.report_html:
+    if not _has_full_access(st.session_state.user) and st.session_state.report_html:
+        st.markdown("""
+        <div class="premium-lock">
+            <h3 style="color:#ff4655;">🔓 解锁完整报告</h3>
+            <p style="color:#ccc; margin: 16px 0;">付费后可解锁以下所有功能：</p>
+            <ul class="feature-list">
+                <li>🧠 完整短板诊断（含差距百分比和改进建议）</li>
+                <li>💚 正向优势反馈（表扬文案）</li>
+                <li>📈 ACS/KAST 历史趋势图</li>
+                <li>🗺️ 地图/英雄专项分析</li>
+                <li>📄 PDF 报告下载</li>
+                <li>📤 分享卡片生成</li>
+                <li>📧 邮件自动发送</li>
+            </ul>
+            <div style="margin-top: 20px; font-size: 24px; font-weight: bold; color: #ff4655;">¥9.9 / 份</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.session_state.user and PAYMENT_AVAILABLE:
+            if st.button("💳 立即支付 ¥9.9 解锁", key="pay_btn"):
+                try:
+                    success_url = f"{os.getenv('BASE_URL', 'http://localhost:8501')}/"
+                    cancel_url = f"{os.getenv('BASE_URL', 'http://localhost:8501')}/"
+                    checkout_url = create_checkout_session(st.session_state.user["id"], success_url, cancel_url)
+                    if checkout_url:
+                        st.markdown(f"[点击前往支付]({checkout_url})")
+                except Exception as e:
+                    logger.error(f"Payment error: {str(e)}")
+                    st.error(f"支付创建失败: {str(e)}")
+        elif not st.session_state.user:
+            st.info("请先登录后再支付")
+
+    if _has_full_access(st.session_state.user) and st.session_state.report_html:
         st.markdown("---")
+        st.markdown("### 📤 交付工具")
         action_cols = st.columns(3)
 
         with action_cols[0]:
             pdf_path = generate_pdf_report(st.session_state.report_html, st.session_state.report_player or "report")
             if pdf_path:
                 with open(pdf_path, "rb") as f:
-                    st.download_button("📥 下载 PDF 报告", data=f, file_name=os.path.basename(pdf_path), mime="application/pdf")
+                    st.download_button("📥 下载 PDF", data=f, file_name=os.path.basename(pdf_path), mime="application/pdf")
 
         with action_cols[1]:
             if st.session_state.report_metrics and st.session_state.report_strengths:
@@ -508,7 +568,7 @@ elif st.session_state.page == "analysis":
                 )
                 if share_path:
                     with open(share_path, "rb") as f:
-                        st.download_button("📤 分享我的优势", data=f, file_name=os.path.basename(share_path), mime="image/png")
+                        st.download_button("📤 分享卡片", data=f, file_name=os.path.basename(share_path), mime="image/png")
 
         with action_cols[2]:
             if st.session_state.user and MAILER_AVAILABLE:
@@ -519,23 +579,6 @@ elif st.session_state.page == "analysis":
                         st.success(f"报告已发送到 {user_email}")
                     except Exception as e:
                         st.error(f"发送失败: {str(e)}")
-
-    if st.session_state.report_html and st.session_state.user and PAYMENT_AVAILABLE:
-        paid_user = db.has_user_paid(st.session_state.user["id"])
-        if not paid_user:
-            st.markdown("---")
-            st.markdown("### 🔓 解锁完整报告")
-            st.info("注册用户可查看完整报告、历史记录和邮箱发送功能。")
-            if st.button("💳 支付 ¥9.9 获取完整报告"):
-                try:
-                    success_url = f"{os.getenv('BASE_URL', 'http://localhost:8501')}/"
-                    cancel_url = f"{os.getenv('BASE_URL', 'http://localhost:8501')}/"
-                    checkout_url = create_checkout_session(st.session_state.user["id"], success_url, cancel_url)
-                    if checkout_url:
-                        st.markdown(f"[点击前往支付]({checkout_url})")
-                except Exception as e:
-                    logger.error(f"Payment error: {str(e)}")
-                    st.error(f"支付创建失败: {str(e)}")
 
 st.markdown("---")
 st.markdown(
