@@ -128,7 +128,7 @@ st.set_page_config(
     layout="centered",
 )
 
-# Check for ?raw=riot query parameter
+# Check for ?raw=riot or /riot.txt in URL
 if RIO_TXT_CONTENT:
     try:
         raw_val = st.query_params.get("raw", "")
@@ -143,6 +143,18 @@ if RIO_TXT_CONTENT:
                 st.stop()
         except Exception:
             pass
+
+# Inject JS to catch /riot.txt path and redirect to ?raw=riot
+st.markdown("""
+<script>
+(function() {
+    var p = window.location.pathname.replace(/\\/+/g, '/');
+    if (p.endsWith('/riot.txt') && window.location.search.indexOf('raw=riot') === -1) {
+        window.location.replace(window.location.origin + '/?raw=riot');
+    }
+})();
+</script>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <meta name="description" content="ValCoach - 《无畏契约》AI 赛后诊断工具。分析你的排位赛数据，找出短板，提升段位。">
