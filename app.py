@@ -128,7 +128,20 @@ st.set_page_config(
     layout="centered",
 )
 
-# Serve riot.txt via query parameter ?raw=riot (Streamlit Cloud compatible)
+# Serve riot.txt via /riot.txt path or ?raw=riot query parameter
+if RIO_TXT_CONTENT:
+    content = RIO_TXT_CONTENT
+    st.markdown(f"""
+    <script>
+        (function() {{
+            var p = window.location.pathname.replace(/\\/+/g, '/');
+            if (p.endsWith('/riot.txt')) {{
+                document.body.innerHTML = '<pre style="font-size:20px;padding:40px;background:#0f0c29;color:#e0e0e0;min-height:100vh;margin:0;font-family:monospace;">{content}</pre>';
+                document.title = 'riot.txt';
+            }}
+        }})();
+    </script>
+    """, unsafe_allow_html=True)
 try:
     if st.query_params.get("raw") == "riot" and RIO_TXT_CONTENT:
         st.markdown(f"```\n{RIO_TXT_CONTENT}\n```")
