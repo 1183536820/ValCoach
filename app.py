@@ -122,30 +122,33 @@ db.init_db()
 admin_id = db.seed_admin_account()
 logger.info(f"Admin account ready (id={admin_id})")
 
+# --- Serve riot.txt publicly at ?raw=riot (before set_page_config to avoid theme flash) ---
+if RIO_TXT_CONTENT:
+    try:
+        if st.query_params.get("raw") == "riot":
+            st.header("riot.txt")
+            st.code(RIO_TXT_CONTENT, language="text")
+            st.caption("Public file — used by client-side Riot API calls.")
+            st.stop()
+    except AttributeError:
+        try:
+            if st.experimental_get_query_params().get("raw", [""])[0] == "riot":
+                st.header("riot.txt")
+                st.code(RIO_TXT_CONTENT, language="text")
+                st.caption("Public file — used by client-side Riot API calls.")
+                st.stop()
+        except Exception:
+            pass
+
 st.set_page_config(
     page_title="ValCoach - 《无畏契约》AI 教练",
     page_icon="🎯",
     layout="centered",
 )
 
-# Check for ?raw=riot or /riot.txt in URL
+# JS redirect: /riot.txt → ?raw=riot (for users who visit the path directly)
 if RIO_TXT_CONTENT:
-    try:
-        raw_val = st.query_params.get("raw", "")
-        if raw_val == "riot":
-            st.markdown(f"```\n{RIO_TXT_CONTENT}\n```")
-            st.stop()
-    except Exception:
-        try:
-            raw_val = st.experimental_get_query_params().get("raw", [""])[0]
-            if raw_val == "riot":
-                st.markdown(f"```\n{RIO_TXT_CONTENT}\n```")
-                st.stop()
-        except Exception:
-            pass
-
-# Inject JS to catch /riot.txt path and redirect to ?raw=riot
-st.markdown("""
+    st.markdown("""
 <script>
 (function() {
     var p = window.location.pathname.replace(/\\/+/g, '/');
