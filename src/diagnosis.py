@@ -56,6 +56,53 @@ def diagnose(
     return results
 
 
+PRAISE_TEMPLATES = {
+    "KDA": "你的存活和击杀能力出色，继续保持团战中的站位意识。",
+    "ACS": "你的综合战斗能力突出，是团队中的核心火力点。",
+    "KAST": "团队协作意识强，积极参与攻防，是可靠的队友。",
+    "headshot_percent": "瞄准精准，一击制敌的能力是你的标志性优势。",
+    "first_blood_rate": "开局能为团队创造人数优势，具备极强的前期影响力。",
+    "econ_rating": "资源利用高效，每一分钱都花在了刀刃上。",
+}
+
+
+def diagnose_strengths(
+    player_metrics: Dict[str, float],
+    baseline_metrics: Dict[str, Any],
+    top_n: int = 2,
+) -> List[Dict[str, Any]]:
+    gaps = []
+
+    for metric, baseline_value in baseline_metrics.items():
+        if metric not in player_metrics:
+            continue
+
+        player_value = player_metrics[metric]
+        if baseline_value == 0:
+            gap = 0.0
+        else:
+            gap = round((player_value - float(baseline_value)) / float(baseline_value) * 100, 2)
+
+        if player_value > float(baseline_value):
+            gaps.append({"metric": metric, "gap": gap, "value": player_value, "baseline": float(baseline_value)})
+
+    gaps.sort(key=lambda x: x["gap"], reverse=True)
+    top_strengths = gaps[:top_n]
+
+    results = []
+    for g in top_strengths:
+        results.append({
+            "metric": g["metric"],
+            "label": METRIC_LABELS.get(g["metric"], g["metric"]),
+            "player_value": g["value"],
+            "baseline_value": g["baseline"],
+            "gap": g["gap"],
+            "praise": PRAISE_TEMPLATES.get(g["metric"], "这项指标表现出色，继续保持！"),
+        })
+
+    return results
+
+
 def diagnose_map_hero_weakness(
     breakdown_data: Dict[str, Dict[str, Dict[str, float]]],
     global_avg_acs: float = 200.0

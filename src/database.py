@@ -2,7 +2,8 @@ import sqlite3
 import os
 from typing import List, Dict, Any, Optional
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
 
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -36,6 +37,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
+                tier TEXT DEFAULT 'Gold',
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -85,6 +87,53 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
         """)
+
+
+def register_user(email: str, password: str) -> Optional[int]:
+    hashed = generate_password_hash(password)
+    try:
+        with _get_conn() as conn:
+            cursor = conn.execute(
+                "INSERT INTO users (email, password) VALUES (?, ?)",
+                (email, hashed)
+            )
+            return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+
+
+def login_user(email: str, password: str) -> Optional[Dict[str, Any]]:
+    with _get_conn() as conn:
+        cursor = conn.execute(
+            "SELECT id, email, password, created_at, tier FROM users WHERE email = ?",
+            (email,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        stored = row["password"]
+        # Check if stored hash is a modern werkzeug hash (contains $)
+        if len(stored) >= 20 and "$" in stored:
+            if not check_password_hash(stored, password):
+                return None
+        else:
+            # Legacy plaintext comparison
+            if stored != password:
+                return None
+            # Auto-upgrade legacy password to hashed version
+            hashed = generate_password_hash(password)
+            conn.execute(
+                "UPDATE users SET password = ? WHERE id = ?",
+                (hashed, row["id"])
+            )
+
+        return {
+            "id": row["id"],
+            "email": row["email"],
+            "created_at": row["created_at"],
+            "tier": row["tier"]
+        }
 
 
 def upsert_player(puuid: str, game_name: str, tag_line: str) -> int:
@@ -158,26 +207,31 @@ def get_player_puuid(game_name: str, tag_line: str) -> Optional[str]:
         return row["puuid"] if row else None
 
 
-def register_user(email: str, password: str) -> Optional[int]:
-    try:
-        with _get_conn() as conn:
-            cursor = conn.execute(
-                "INSERT INTO users (email, password) VALUES (?, ?)",
-                (email, password)
-            )
-            return cursor.lastrowid
-    except sqlite3.IntegrityError:
-        return None
-
-
-def login_user(email: str, password: str) -> Optional[Dict[str, Any]]:
+def is_cache_valid(puuid: str, max_age_minutes: int = 30) -> bool:
     with _get_conn() as conn:
         cursor = conn.execute(
-            "SELECT id, email, created_at FROM users WHERE email = ? AND password = ?",
-            (email, password)
+            "SELECT last_updated FROM player WHERE puuid = ?",
+            (puuid,)
         )
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if row is None or row["last_updated"] is None:
+            return False
+        last_updated = datetime.fromisoformat(row["last_updated"])
+        return datetime.now() - last_updated < timedelta(minutes=max_age_minutes)
+
+
+def get_cached_metrics(puuid: str) -> List[Dict[str, Any]]:
+    with _get_conn() as conn:
+        cursor = conn.execute("""
+            SELECT m.kda, m.acs, m.kast, m.headshot_percent,
+                   m.first_blood_rate, m.econ_rating,
+                   m.match_id, m.agent_played, m.map_name
+            FROM match_history m
+            JOIN player p ON m.player_id = p.id
+            WHERE p.puuid = ?
+            ORDER BY m.game_start_timestamp ASC
+        """, (puuid,))
+        return [dict(row) for row in cursor.fetchall()]
 
 
 def save_report(user_id: int, player_name: str, report_html: str) -> int:
@@ -223,3 +277,11 @@ def record_payment(user_id: int, session_id: str, amount: float = 9.9):
             INSERT INTO payments (user_id, stripe_session_id, amount, status)
             VALUES (?, ?, ?, 'completed')
         """, (user_id, session_id, amount))
+
+
+def update_user_tier(user_id: int, tier: str):
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET tier = ? WHERE id = ?",
+            (tier, user_id)
+        )

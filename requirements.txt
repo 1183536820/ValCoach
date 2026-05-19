@@ -7,3 +7,5 @@ riotwatcher>=3.4.0
 plotly>=5.17.0
 numpy>=1.24.0
 stripe>=7.0.0
+werkzeug>=2.3.0
+weasyprint>=60.0

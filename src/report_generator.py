@@ -1,5 +1,6 @@
 import io
 import base64
+import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -9,6 +10,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from src.diagnosis import METRIC_LABELS
+
+
+REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports")
 
 
 def _normalize_metrics(
@@ -58,7 +62,7 @@ def _build_radar_chart_base64(
     fig.patch.set_facecolor("#1a1a2e")
     ax.set_facecolor("#1a1a2e")
 
-    ax.plot(angles, baseline_values_plot, "o-", linewidth=2, label="高分玩家基准", color="#4a90d9")
+    ax.plot(angles, baseline_values_plot, "o-", linewidth=2, label="同段位基准", color="#4a90d9")
     ax.fill(angles, baseline_values_plot, alpha=0.1, color="#4a90d9")
 
     ax.plot(angles, player_values_plot, "o-", linewidth=2, label="你的数据", color="#e74c3c")
@@ -74,7 +78,7 @@ def _build_radar_chart_base64(
     for spine in ax.spines.values():
         spine.set_color("#333333")
 
-    ax.set_title("能力雷达图 - 玩家 vs 高分基准", color="#e0e0e0", fontsize=14, pad=20)
+    ax.set_title("能力雷达图 - 玩家 vs 同段位基准", color="#e0e0e0", fontsize=14, pad=20)
     ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=10, labelcolor="#e0e0e0")
     ax.grid(color="#333333", linewidth=0.5)
 
@@ -97,7 +101,6 @@ def generate_trend_chart(
         return ""
 
     values = [h.get("value", 0) for h in history]
-    dates = [str(i) for i in range(len(history))]
     x = list(range(len(values)))
 
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -132,6 +135,55 @@ def generate_trend_chart(
     return img_base64
 
 
+def build_share_card(
+    player_id: str,
+    player_metrics: Dict[str, float],
+    strengths: List[Dict[str, Any]],
+    tier: str = "Gold"
+) -> str:
+    if not strengths:
+        return ""
+
+    top = strengths[0]
+    metric_label = METRIC_LABELS.get(top["metric"], top["metric"])
+    tagline = f"我的 {metric_label} 超过{tier}段位 {abs(top['gap']):.0f}% 的玩家！来 ValCoach 测测你的战斗基因"
+
+    fig, ax = plt.subplots(figsize=(6, 3))
+    fig.patch.set_facecolor("#1a1a2e")
+    ax.set_facecolor("#1a1a2e")
+    ax.axis("off")
+
+    ax.text(0.5, 0.85, "ValCoach", fontsize=22, fontweight="bold",
+            color="#ff4655", ha="center", va="center")
+    ax.text(0.5, 0.7, player_id, fontsize=14, color="#e0e0e0", ha="center", va="center")
+    ax.text(0.5, 0.5, tagline, fontsize=11, color="#ccc", ha="center", va="center",
+            wrap=True)
+    ax.text(0.5, 0.25, f"{metric_label}: {top['player_value']} | 段位基准: {top['baseline_value']}",
+            fontsize=10, color="#888", ha="center", va="center")
+    ax.text(0.5, 0.1, "valcoach.gg", fontsize=9, color="#555", ha="center", va="center")
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    safe_name = player_id.replace("#", "_").replace(" ", "_")
+    filepath = os.path.join(REPORTS_DIR, f"share_{safe_name}.png")
+    fig.savefig(filepath, dpi=120, bbox_inches="tight", facecolor="#1a1a2e")
+    plt.close(fig)
+
+    return filepath
+
+
+def generate_pdf_report(report_html: str, player_name: str) -> Optional[str]:
+    try:
+        from weasyprint import HTML
+        os.makedirs(REPORTS_DIR, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = player_name.replace("#", "_").replace(" ", "_")
+        filepath = os.path.join(REPORTS_DIR, f"{safe_name}_{timestamp}.pdf")
+        HTML(string=report_html).write_pdf(filepath)
+        return filepath
+    except Exception:
+        return None
+
+
 def generate_report(
     player_id: str,
     player_metrics: Dict[str, float],
@@ -140,6 +192,7 @@ def generate_report(
     acs_trend: Optional[List[Dict[str, Any]]] = None,
     kast_trend: Optional[List[Dict[str, Any]]] = None,
     map_hero_results: Optional[List[Dict[str, Any]]] = None,
+    strength_results: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     radar_img = _build_radar_chart_base64(player_metrics, baseline_metrics)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -158,6 +211,27 @@ def generate_report(
                 <td>{baseline_val}</td>
                 <td>{sign}{gap_pct}%</td>
             </tr>"""
+
+    strengths_html = ""
+    if strength_results:
+        items = ""
+        for s in strength_results:
+            items += f"""
+            <div class="strength-card" style="border-left: 4px solid #27ae60;">
+                <div class="diagnosis-header">
+                    <span class="metric-name">{s['label']}</span>
+                    <span class="gap-badge" style="background: #27ae6020; color: #27ae60;">
+                        +{s['gap']:.1f}%
+                    </span>
+                </div>
+                <div class="diagnosis-detail">
+                    你的数值: {s['player_value']} | 基准值: {s['baseline_value']}
+                </div>
+                <div class="diagnosis-advice" style="color: #a0d8a0;">{s['praise']}</div>
+            </div>"""
+        strengths_html = f"""
+        <h2 class="section-title" style="border-left-color: #27ae60;">你的优势</h2>
+        {items}"""
 
     diagnosis_html = ""
     for diag in diagnosis_results:
@@ -245,19 +319,8 @@ def generate_report(
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }}
-        .header {{
-            text-align: center;
-            margin-bottom: 40px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }}
-        .header h1 {{
-            font-size: 28px;
-            background: linear-gradient(90deg, #ff4655, #ff6b81);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 8px;
-        }}
+        .header {{ text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }}
+        .header h1 {{ font-size: 28px; background: linear-gradient(90deg, #ff4655, #ff6b81); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
         .header .subtitle {{ color: #888; font-size: 14px; }}
         .header .player-id {{ font-size: 20px; color: #e0e0e0; margin-top: 12px; }}
         .section-title {{ font-size: 20px; margin: 30px 0 20px; color: #e0e0e0; padding-left: 12px; border-left: 3px solid #ff4655; }}
@@ -266,13 +329,21 @@ def generate_report(
         th {{ background: rgba(255, 70, 85, 0.15); padding: 12px 16px; text-align: left; font-weight: 600; font-size: 14px; color: #ccc; }}
         td {{ padding: 12px 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 14px; }}
         tr:hover {{ background: rgba(255, 255, 255, 0.03); }}
-        .diagnosis-card {{ background: rgba(0, 0, 0, 0.2); border-radius: 10px; padding: 20px; margin: 16px 0; }}
+        .diagnosis-card, .strength-card {{ background: rgba(0, 0, 0, 0.2); border-radius: 10px; padding: 20px; margin: 16px 0; }}
         .diagnosis-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }}
         .metric-name {{ font-size: 18px; font-weight: 600; color: #e0e0e0; }}
         .gap-badge {{ display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; }}
         .diagnosis-detail {{ font-size: 13px; color: #888; margin-bottom: 10px; }}
         .diagnosis-advice {{ font-size: 14px; line-height: 1.6; color: #ccc; }}
         .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center; font-size: 12px; color: #666; line-height: 1.8; }}
+        @media (max-width: 600px) {{
+            body {{ padding: 10px; }}
+            .container {{ padding: 16px; }}
+            .header h1 {{ font-size: 22px; }}
+            table {{ font-size: 12px; }}
+            th, td {{ padding: 8px 10px; }}
+            .metric-name {{ font-size: 15px; }}
+        }}
     </style>
 </head>
 <body>
@@ -292,7 +363,7 @@ def generate_report(
                 <tr>
                     <th>指标</th>
                     <th>你的数值</th>
-                    <th>高分基准</th>
+                    <th>同段位基准</th>
                     <th>差距</th>
                 </tr>
             </thead>
@@ -300,6 +371,8 @@ def generate_report(
                 {metrics_rows}
             </tbody>
         </table>
+
+        {strengths_html}
 
         <h2 class="section-title">核心短板分析</h2>
         {diagnosis_html if diagnosis_html else '<p style="color: #27ae60; text-align: center; padding: 20px;">所有指标均达到或超过基准水平！继续保持！</p>'}
