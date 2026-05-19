@@ -30,11 +30,13 @@ def _rerun():
 
 import src.api_client as api_client
 from src.api_client import get_puuid, get_match_history, get_match_details
+import src.local_client as local_client
 from src.metrics import calculate_metrics, aggregate_metrics, extract_match_extra, calculate_map_hero_breakdown
 from src.baseline import load_baseline
 from src.diagnosis import diagnose, diagnose_map_hero_weakness, diagnose_strengths
 from src.report_generator import generate_report, build_share_card, generate_pdf_report
 import src.database as db
+from pages.video_analysis import video_analysis_page
 try:
     from src.payment import create_checkout_session, verify_payment
     PAYMENT_AVAILABLE = True
@@ -126,7 +128,7 @@ logger.info(f"Admin account ready (id={admin_id})")
 st.set_page_config(
     page_title="ValCoach - 《无畏契约》AI 教练",
     page_icon="🎯",
-    layout="centered",
+    layout="wide",
 )
 
 # Serve riot.txt publicly at ?raw=riot (fallback access method)
@@ -168,21 +170,134 @@ if RIO_TXT_CONTENT:
 
 st.markdown("""
 <style>
-    .main-header { text-align: center; padding: 2rem 0; }
-    .main-header h1 { font-size: 3rem; background: linear-gradient(90deg, #ff4655, #ff6b81); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
-    .main-header p { font-size: 1.1rem; color: #888; }
-    .stButton > button { background: linear-gradient(90deg, #ff4655, #e63946); color: white; border: none; font-size: 1.1rem; padding: 0.5rem 2rem; width: 100%; }
-    .stButton > button:hover { background: linear-gradient(90deg, #e63946, #c5303c); }
-    .product-card { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 24px; margin: 12px 0; border: 1px solid rgba(255,255,255,0.1); }
-    .product-card h3 { color: #ff4655; margin-bottom: 8px; }
-    .product-card p { color: #aaa; font-size: 14px; }
-    .footer { text-align: center; color: #666; font-size: 0.85rem; padding: 2rem 0; }
-    .step-card { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 16px; text-align: center; }
-    .step-card h4 { color: #ff4655; font-size: 1.5rem; }
-    .step-card p { color: #ccc; font-size: 0.9rem; }
-    .premium-lock { background: rgba(255,70,85,0.08); border-radius: 12px; padding: 30px; text-align: center; margin: 20px 0; border: 1px dashed #ff4655; }
-    .feature-list { list-style: none; padding: 0; }
-    .feature-list li { padding: 8px 0; color: #ccc; font-size: 14px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+
+    .main-header { text-align: center; padding: 2.5rem 1rem 1.5rem; }
+    .main-header h1 { font-size: 3.2rem; background: linear-gradient(135deg, #ff4655, #ff6b81, #ff8a9e); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0.5rem; letter-spacing: -0.5px; }
+    .main-header p { font-size: 1.15rem; color: #999; font-weight: 400; }
+
+    .stButton > button {
+        background: linear-gradient(135deg, #ff4655, #e63946);
+        color: white; border: none; font-size: 1.05rem;
+        padding: 0.6rem 2rem; width: 100%;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(255,70,85,0.3);
+    }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #e63946, #c5303c);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(255,70,85,0.4);
+    }
+
+    .glass-card {
+        background: rgba(255,255,255,0.04);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 24px;
+        margin: 12px 0;
+        border: 1px solid rgba(255,255,255,0.08);
+        transition: all 0.3s ease;
+    }
+    .glass-card:hover {
+        border-color: rgba(255,70,85,0.3);
+        box-shadow: 0 8px 32px rgba(255,70,85,0.08);
+    }
+    .glass-card h3 { color: #ff4655; margin-bottom: 8px; font-weight: 600; }
+    .glass-card p { color: #aaa; font-size: 14px; line-height: 1.6; }
+
+    .footer {
+        text-align: center;
+        color: #555;
+        font-size: 0.8rem;
+        padding: 2rem 0;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        margin-top: 2rem;
+    }
+
+    .step-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px;
+        padding: 20px 16px;
+        text-align: center;
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+    .step-card:hover {
+        border-color: rgba(255,70,85,0.25);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(255,70,85,0.06);
+    }
+    .step-card h4 { color: #ff4655; font-size: 1.6rem; margin: 0 0 8px; }
+    .step-card p { color: #ccc; font-size: 0.9rem; margin: 4px 0; }
+    .step-card .step-label { font-weight: 600; color: #e0e0e0; font-size: 0.95rem; }
+
+    .premium-lock {
+        background: linear-gradient(135deg, rgba(255,70,85,0.08), rgba(255,70,85,0.03));
+        border-radius: 16px;
+        padding: 32px;
+        text-align: center;
+        margin: 20px 0;
+        border: 1px solid rgba(255,70,85,0.2);
+    }
+    .premium-lock h3 { color: #ff4655; font-size: 1.4rem; }
+    .feature-list { list-style: none; padding: 0; margin: 16px 0; }
+    .feature-list li { padding: 10px 0; color: #ccc; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .feature-list li:last-child { border-bottom: none; }
+
+    .source-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        margin-left: 8px;
+    }
+    .source-badge.local { background: rgba(76,175,80,0.15); color: #66bb6a; }
+    .source-badge.riot { background: rgba(255,70,85,0.15); color: #ff4655; }
+    .source-badge.demo { background: rgba(255,193,7,0.15); color: #ffd54f; }
+
+    div[data-testid="stRadio"] > label { font-weight: 600; font-size: 0.9rem; color: #aaa; margin-bottom: 8px; }
+    div[data-testid="stRadio"] > div { gap: 4px; }
+    div[data-testid="stRadio"] > div label {
+        padding: 8px 14px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        background: transparent;
+    }
+    div[data-testid="stRadio"] > div label:hover { background: rgba(255,255,255,0.04); }
+
+    div[data-testid="stTextInput"] label { font-weight: 500; color: #ccc; }
+    div[data-testid="stTextInput"] input {
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(0,0,0,0.3);
+        padding: 10px 14px;
+        color: #e0e0e0;
+        transition: border-color 0.2s ease;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #ff4655;
+        box-shadow: 0 0 0 2px rgba(255,70,85,0.15);
+    }
+
+    .status-msg {
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin: 8px 0;
+        font-size: 14px;
+    }
+
+    .report-container {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.08);
+        margin: 20px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -199,14 +314,14 @@ if "report_metrics" not in st.session_state:
 if "report_strengths" not in st.session_state:
     st.session_state.report_strengths = None
 
-st.sidebar.markdown("## 🔐 账户")
+st.sidebar.markdown("""<i class="fas fa-user-lock" style="margin-right:4px;"></i> **账户**""", unsafe_allow_html=True)
 
 if st.session_state.user:
     tier_label = st.session_state.user.get("tier", "免费")
-    display = f"欢迎, {st.session_state.user['email']}"
+    display = f"<i class='fas fa-user' style='margin-right:4px;'></i> {st.session_state.user['email']}"
     if tier_label == "admin":
-        display += " 👑"
-    st.sidebar.success(display)
+        display += " <i class='fas fa-crown' style='color:#ffd700;'></i>"
+    st.sidebar.markdown(f"<div style='padding:10px 14px;background:rgba(76,175,80,0.08);border-radius:10px;border-left:3px solid #4caf50;color:#a5d6a7;font-size:0.85rem;'>{display}<br><span style='color:#888;font-size:0.75rem;'>{tier_label.upper()}</span></div>", unsafe_allow_html=True)
     col_a, col_b = st.sidebar.columns(2)
     if col_a.button("📊 分析"):
         st.session_state.page = "analysis"
@@ -242,8 +357,19 @@ else:
                 else:
                     st.error("该邮箱已被注册")
 
-demo_mode = st.sidebar.checkbox("🎮 使用演示数据（跳过API）", value=False, key="demo_mode_global",
-                                help="启用后使用模拟数据展示报告效果，无需配置API密钥")
+st.sidebar.markdown("---")
+if st.sidebar.button("🎥 视频分析", use_container_width=True):
+    st.session_state.page = "video_analysis"
+
+data_source = st.sidebar.radio(
+    "📡 数据来源",
+    options=["🌐 Riot API（国际服）", "💻 本地客户端", "🎮 演示数据"],
+    index=0,
+    key="data_source",
+    help="选择数据获取方式",
+)
+demo_mode = (data_source == "🎮 演示数据")
+local_mode = (data_source == "💻 本地客户端")
 
 if st.session_state.user and st.session_state.user.get("email") in ADMIN_EMAILS:
     with st.sidebar.expander("🛠 管理员工具", expanded=False):
@@ -263,7 +389,7 @@ if st.session_state.user and st.session_state.user.get("email") in ADMIN_EMAILS:
                 st.error(f"更新失败: {str(e)}")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ℹ️ 关于 ValCoach")
+st.sidebar.markdown("### <i class='fas fa-info-circle' style='margin-right:4px;'></i> 关于 ValCoach", unsafe_allow_html=True)
 st.sidebar.markdown("""
 ValCoach 是一款基于 AI 的《无畏契约》赛后诊断工具。
 
@@ -275,11 +401,11 @@ ValCoach 是一款基于 AI 的《无畏契约》赛后诊断工具。
 
 if not st.session_state.user:
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 👑 管理员体验账号")
+    st.sidebar.markdown("### <i class='fas fa-crown' style='margin-right:4px;color:#ffd700;'></i> 管理员体验账号", unsafe_allow_html=True)
     st.sidebar.info("邮箱: `admin@valcoach.gg`\n密码: `admin123`")
 
 if st.session_state.page == "history" and st.session_state.user:
-    st.markdown("# 📋 我的历史报告")
+    st.markdown("# <i class='fas fa-history' style='margin-right:8px;'></i> 我的历史报告", unsafe_allow_html=True)
     reports = db.get_user_reports(st.session_state.user["id"])
     if reports:
         for r in reports:
@@ -303,6 +429,10 @@ if st.session_state.page == "history" and st.session_state.user:
         st.session_state.page = "analysis"
         _rerun()
 
+elif st.session_state.page == "video_analysis":
+    with st.container():
+        video_analysis_page()
+
 elif st.session_state.page == "analysis":
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.markdown("# ValCoach - 《无畏契约》AI 教练")
@@ -316,51 +446,47 @@ elif st.session_state.page == "analysis":
         else:
             st.info(f"👋 欢迎回来，{st.session_state.user['email']}")
 
-    st.markdown("""
-    <div style="text-align:center; margin: 12px 0; padding: 12px; background: rgba(255,70,85,0.05); border-radius: 8px;">
-        <p style="color:#aaa; font-size:14px;">
-            💡 首次使用？试试勾选侧边栏的 <b style="color:#ff4655;">🎮 演示模式</b>，或输入你的ID开始分析
-        </p>
+    src_label = data_source
+    st.markdown(f"""
+    <div class="status-msg">
+        <i class="fas fa-info-circle" style="margin-right:6px;"></i>
+        当前数据源：<b style="color:#ff4655;">{src_label}</b>
+        <span style="color:#777;font-size:0.8rem;"> — 可在左侧边栏切换</span>
     </div>
     """, unsafe_allow_html=True)
 
     with st.container():
-        st.markdown("""
-        <div class="product-card">
-            <h3>🎯 AI 驱动的赛后诊断</h3>
-            <p>自动拉取你最近20场排位赛数据，与同段位玩家基准进行6维对比，精准定位你的短板，提供可执行的训练建议。</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="glass-card"><h3><i class="fas fa-crosshairs" style="margin-right:8px;"></i>AI 驱动的赛后诊断</h3><p>自动拉取你最近20场排位赛数据，与同段位玩家基准进行6维对比，精准定位你的短板，提供可执行的训练建议。</p></div>', unsafe_allow_html=True)
 
-        st.markdown("### 📖 三步使用指南")
+        st.markdown("""<i class="fas fa-compass" style="color:#ff4655;margin-right:4px;"></i> **三步使用指南**""", unsafe_allow_html=True)
         guide_cols = st.columns(3)
         steps = [
-            ("1️⃣", "输入ID", "输入你的游戏ID和Tagline"),
-            ("2️⃣", "自动分析", "系统拉取最近20场排位赛数据"),
-            ("3️⃣", "获取报告", "一键生成诊断报告和改进建议"),
+            ("1", "输入ID", "输入你的游戏ID和Tagline"),
+            ("2", "自动分析", "系统拉取最近20场排位赛数据"),
+            ("3", "获取报告", "一键生成诊断报告和改进建议"),
         ]
         for col, (num, title, desc) in zip(guide_cols, steps):
             with col:
                 st.markdown(f"""
                 <div class="step-card">
-                    <h4>{num}</h4>
-                    <p style="font-weight:600; color:#e0e0e0;">{title}</p>
+                    <div class="step-num">{num}</div>
+                    <span class="step-label">{title}</span>
                     <p>{desc}</p>
                 </div>
                 """, unsafe_allow_html=True)
 
         cols = st.columns(3)
         features = [
-            ("📊", "全面指标", "KDA/ACS/KAST/爆头率/首杀率/经济评分"),
-            ("🧠", "智能诊断", "AI分析短板，给出针对性训练建议"),
-            ("📈", "趋势追踪", "查看ACS和KAST的历史变化趋势"),
+            ('<i class="fas fa-chart-bar"></i>', "全面指标", "KDA/ACS/KAST/爆头率/首杀率/经济评分"),
+            ('<i class="fas fa-brain"></i>', "智能诊断", "AI分析短板，给出针对性训练建议"),
+            ('<i class="fas fa-chart-line"></i>', "趋势追踪", "查看ACS和KAST的历史变化趋势"),
         ]
         for col, (icon, title, desc) in zip(cols, features):
             with col:
                 st.markdown(f"""
-                <div class="product-card" style="text-align:center;">
-                    <h3>{icon}</h3>
-                    <p style="color:#e0e0e0;font-weight:600;">{title}</p>
+                <div class="glass-card" style="text-align:center;">
+                    <div class="card-icon">{icon}</div>
+                    <p style="color:#e0e0e0;font-weight:600;margin-bottom:6px;">{title}</p>
                     <p>{desc}</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -378,7 +504,7 @@ elif st.session_state.page == "analysis":
             st.error("请同时输入游戏ID和Tagline。")
         else:
             is_full = _has_full_access(st.session_state.user)
-            if demo_mode:
+            if data_source == "🎮 演示数据":
                 progress_bar = st.progress(0, text="正在准备演示数据...")
                 status_text = st.empty()
                 try:
@@ -410,7 +536,120 @@ elif st.session_state.page == "analysis":
                 finally:
                     progress_bar.empty()
                     status_text.empty()
-            else:
+
+            elif data_source == "💻 本地客户端":
+                progress_bar = st.progress(0, text="正在连接本地客户端...")
+                status_text = st.empty()
+                try:
+                    status_text.info("正在检测无畏契约客户端...")
+                    progress_bar.progress(10)
+                    status = local_client.get_local_status()
+                    if not status["available"]:
+                        raise local_client.LocalClientError(
+                            "未检测到运行中的无畏契约客户端。\n"
+                            "请先启动游戏，然后重试。"
+                        )
+
+                    puuid = status["puuid"]
+                    lockfile = status["lockfile"]
+                    base_url = status["base_url"]
+                    auth_headers = status["auth_headers"]
+
+                    status_text.info("✅ 已连接客户端，正在获取授权令牌...")
+                    progress_bar.progress(20)
+                    tokens = local_client.get_remote_tokens(base_url, auth_headers)
+                    client_version = local_client.get_client_version(base_url, auth_headers)
+
+                    status_text.info("🔄 正在拉取比赛记录...")
+                    progress_bar.progress(30)
+                    match_ids = local_client.fetch_match_history(puuid, tokens, client_version, count=20)
+
+                    if not match_ids:
+                        st.warning("未找到排位赛记录。")
+                    else:
+                        all_metrics = []
+                        all_match_extras = []
+                        total_matches = len(match_ids)
+
+                        for i, match_id in enumerate(match_ids):
+                            progress_val = 30 + int((i / total_matches) * 50)
+                            progress_bar.progress(progress_val, text=f"正在分析第 {i+1}/{total_matches} 场比赛...")
+                            try:
+                                match_data = local_client.fetch_match_details(match_id, tokens, client_version)
+                                match_metrics = calculate_metrics(match_data, puuid)
+                                extra = extract_match_extra(match_data, puuid)
+                                all_metrics.append(match_metrics)
+                                combined = {**extra, "metrics": match_metrics, "match_id": match_id}
+                                all_match_extras.append(combined)
+                            except Exception:
+                                continue
+
+                        if not all_metrics:
+                            st.error("未能成功分析任何比赛数据。")
+                        else:
+                            progress_bar.progress(85, text="正在生成诊断建议...")
+                            status_text.info("正在生成诊断建议...")
+                            avg_metrics = aggregate_metrics(all_metrics)
+
+                            tier = _guess_tier(avg_metrics.get("ACS", 0))
+                            baseline_data = load_baseline(tier=tier)
+
+                            diagnosis_results = diagnose(avg_metrics, baseline_data)
+                            strength_results = diagnose_strengths(avg_metrics, baseline_data) if is_full else []
+
+                            breakdown_data = calculate_map_hero_breakdown(all_match_extras)
+                            map_hero_results = diagnose_map_hero_weakness(breakdown_data, global_avg_acs=avg_metrics.get("ACS", 200))
+
+                            acs_history = []
+                            kast_history = []
+                            for m_extra in all_match_extras:
+                                met = m_extra.get("metrics", {})
+                                ts = m_extra.get("game_start_timestamp", 0)
+                                acs_history.append({"value": met.get("ACS", 0), "date": str(ts)})
+                                kast_history.append({"value": met.get("KAST", 0), "date": str(ts)})
+
+                            progress_bar.progress(95, text="正在生成报告...")
+                            status_text.info("正在生成报告...")
+                            player_display_id = f"{game_name}#{tag_line}"
+                            html_report = generate_report(
+                                player_id=player_display_id,
+                                player_metrics=avg_metrics,
+                                diagnosis_results=diagnosis_results,
+                                baseline_metrics=baseline_data,
+                                acs_trend=acs_history if is_full else None,
+                                kast_trend=kast_history if is_full else None,
+                                map_hero_results=map_hero_results if is_full else None,
+                                strength_results=strength_results,
+                            )
+                            st.session_state.report_html = html_report
+                            st.session_state.report_player = player_display_id
+                            st.session_state.report_metrics = avg_metrics
+                            st.session_state.report_strengths = strength_results
+
+                            if st.session_state.user:
+                                try:
+                                    db.save_report(st.session_state.user["id"], player_display_id, html_report)
+                                    if st.session_state.user.get("tier") != tier:
+                                        db.update_user_tier(st.session_state.user["id"], tier)
+                                except Exception:
+                                    pass
+
+                            progress_bar.progress(100)
+                            status_text.success("分析完成！（本地客户端）")
+                            st.components.v1.html(html_report, height=1800, scrolling=True)
+
+                except local_client.LocalClientError as e:
+                    logger.error(f"Local client error: {str(e)}")
+                    st.error(f"💻 本地客户端错误: {str(e)}")
+                except Exception as e:
+                    logger.error(f"Local client unexpected error: {str(e)}")
+                    st.error(f"❌ 未知错误: {str(e)}")
+                    st.error(traceback.format_exc())
+                finally:
+                    progress_bar.empty()
+                    status_text.empty()
+
+            else:  # Riot API (国际服)
                 api_key = os.getenv("RIOT_API_KEY")
                 if not api_key or api_key == "RGAPI-你的密钥":
                     st.error("⚠️ 请先在 `.env` 文件中配置有效的 RIOT_API_KEY。")
@@ -557,18 +796,18 @@ elif st.session_state.page == "analysis":
     if not _has_full_access(st.session_state.user) and st.session_state.report_html:
         st.markdown("""
         <div class="premium-lock">
-            <h3 style="color:#ff4655;">🔓 解锁完整报告</h3>
+            <h3><i class="fas fa-crown" style="margin-right:8px;"></i>解锁完整报告</h3>
             <p style="color:#ccc; margin: 16px 0;">付费后可解锁以下所有功能：</p>
             <ul class="feature-list">
-                <li>🧠 完整短板诊断（含差距百分比和改进建议）</li>
-                <li>💚 正向优势反馈（表扬文案）</li>
-                <li>📈 ACS/KAST 历史趋势图</li>
-                <li>🗺️ 地图/英雄专项分析</li>
-                <li>📄 PDF 报告下载</li>
-                <li>📤 分享卡片生成</li>
-                <li>📧 邮件自动发送</li>
+                <li><i class="fas fa-brain" style="width:20px;"></i> 完整短板诊断（含差距百分比和改进建议）</li>
+                <li><i class="fas fa-thumbs-up" style="width:20px;"></i> 正向优势反馈（表扬文案）</li>
+                <li><i class="fas fa-chart-line" style="width:20px;"></i> ACS/KAST 历史趋势图</li>
+                <li><i class="fas fa-map" style="width:20px;"></i> 地图/英雄专项分析</li>
+                <li><i class="fas fa-file-pdf" style="width:20px;"></i> PDF 报告下载</li>
+                <li><i class="fas fa-share-alt" style="width:20px;"></i> 分享卡片生成</li>
+                <li><i class="fas fa-envelope" style="width:20px;"></i> 邮件自动发送</li>
             </ul>
-            <div style="margin-top: 20px; font-size: 24px; font-weight: bold; color: #ff4655;">¥9.9 / 份</div>
+            <div class="price">¥9.9 <span style="font-size:1rem;font-weight:400;color:#999;">/ 份</span></div>
         </div>
         """, unsafe_allow_html=True)
         if st.session_state.user and PAYMENT_AVAILABLE:
