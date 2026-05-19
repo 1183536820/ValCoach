@@ -15,6 +15,11 @@ from src.logger import get_logger
 
 logger = get_logger()
 
+try:
+    RIO_TXT_CONTENT = open(os.path.join(os.path.dirname(__file__), "riot.txt"), "r").read().strip()
+except Exception:
+    RIO_TXT_CONTENT = None
+
 
 def _rerun():
     if hasattr(st, "rerun"):
@@ -122,6 +127,18 @@ st.set_page_config(
     page_icon="🎯",
     layout="centered",
 )
+
+_raw_param = None
+try:
+    if hasattr(st, "query_params"):
+        _raw_param = st.query_params.get("raw")
+    else:
+        _raw_param = st.experimental_get_query_params().get("raw", [None])[0]
+except Exception:
+    pass
+if _raw_param and str(_raw_param) == "riot" and RIO_TXT_CONTENT:
+    st.markdown(f"```\n{RIO_TXT_CONTENT}\n```")
+    st.stop()
 
 st.markdown("""
 <meta name="description" content="ValCoach - 《无畏契约》AI 赛后诊断工具。分析你的排位赛数据，找出短板，提升段位。">
