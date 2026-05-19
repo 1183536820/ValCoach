@@ -128,17 +128,13 @@ st.set_page_config(
     layout="centered",
 )
 
-# Detect /riot.txt in URL path and show raw content
-if RIO_TXT_CONTENT:
-    st.markdown(f"""
-    <script>
-        const p = window.location.pathname;
-        if (p.includes("riot.txt")) {{
-            document.body.innerHTML = '<pre style="font-size:24px;padding:40px;background:#0f0c29;color:#e0e0e0;min-height:100vh;margin:0;">{RIO_TXT_CONTENT}</pre>';
-            document.title = "riot.txt";
-        }}
-    </script>
-    """, unsafe_allow_html=True)
+# Serve riot.txt via query parameter ?raw=riot (Streamlit Cloud compatible)
+try:
+    if st.query_params.get("raw") == "riot" and RIO_TXT_CONTENT:
+        st.markdown(f"```\n{RIO_TXT_CONTENT}\n```")
+        st.stop()
+except Exception:
+    pass
 
 st.markdown("""
 <meta name="description" content="ValCoach - 《无畏契约》AI 赛后诊断工具。分析你的排位赛数据，找出短板，提升段位。">
