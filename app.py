@@ -5,6 +5,7 @@ import random
 import time
 
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -151,6 +152,19 @@ st.markdown("""
 <meta property="og:title" content="ValCoach - 《无畏契约》AI 教练">
 <meta property="og:description" content="AI驱动的无畏契约赛后分析工具，6项核心指标诊断，雷达图可视化报告。">
 """, unsafe_allow_html=True)
+
+# JS redirect: /riot.txt → ?raw=riot (runs in browser, uses iframe so scripts execute)
+if RIO_TXT_CONTENT:
+    components.html("""
+<script>
+(function() {
+    var p = window.parent.location.pathname.replace(/\\/+/g, '/');
+    if (p.endsWith('/riot.txt') && window.parent.location.search.indexOf('raw=riot') === -1) {
+        window.parent.location.replace(window.parent.location.origin + '/?raw=riot');
+    }
+})();
+</script>
+""", height=0)
 
 st.markdown("""
 <style>
