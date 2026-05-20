@@ -9,7 +9,7 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-logger = logging.getLogger("valcoach.local_client")
+logger = logging.getLogger("valcoach")
 
 CLIENT_PLATFORM = "ew0KCSAJInBsYXRmb3JtVHlwZSI6ICJQQyINCn0="  # base64 {"platformType": "PC"}
 
@@ -19,20 +19,61 @@ class LocalClientError(Exception):
 
 
 def find_lockfile() -> Optional[str]:
-    """Search for Riot Client lockfile in known locations."""
+    """Search for Riot Client lockfile in known locations.
+
+    Covers standard Riot Games install (international) and Tencent
+    (Chinese) install paths for 无畏契约.
+    """
     localappdata = os.environ.get("LOCALAPPDATA", "")
+    programdata = os.environ.get("PROGRAMDATA", "")
+    userprofile = os.environ.get("USERPROFILE", "")
+
+    # All known lockfile locations across different installers
     candidates = [
+        # Standard Riot Client path (intl + CN via Riot launcher)
         os.path.join(localappdata, "Riot Games", "Riot Client", "Config", "lockfile"),
+        # Tencent launcher — 腾讯游戏
         os.path.join(localappdata, "腾讯游戏", "Riot Client", "Config", "lockfile"),
+        # Valorant-specific path under LOCALAPPDATA
+        os.path.join(localappdata, "VALORANT", "Riot Client", "Config", "lockfile"),
+        # Under programdata
+        os.path.join(programdata, "Riot Games", "Riot Client", "Config", "lockfile"),
+        # Under userprofile as alternative
+        os.path.join(userprofile, "AppData", "Local", "Riot Games", "Riot Client", "Config", "lockfile"),
     ]
-    for path in candidates:
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique = []
+    for p in candidates:
+        if p and p not in seen:
+            seen.add(p)
+            unique.append(p)
+
+    for path in unique:
         if os.path.isfile(path):
             try:
                 with open(path, "r") as f:
                     f.read().strip()
+                logger.info(f"Found lockfile at {path}")
                 return path
             except Exception:
                 continue
+
+    # Fallback: recursive glob under LOCALAPPDATA
+    import glob
+    pattern = os.path.join(localappdata, "**", "lockfile")
+    for match in sorted(glob.glob(pattern, recursive=True)):
+        try:
+            with open(match, "r") as f:
+                content = f.read().strip()
+            if ":" in content and content.count(":") >= 4:
+                logger.info(f"Found lockfile via glob at {match}")
+                return match
+        except Exception:
+            continue
+
+    logger.warning(f"Lockfile not found in any candidate path under {localappdata}")
     return None
 
 
