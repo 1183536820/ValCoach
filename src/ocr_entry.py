@@ -45,7 +45,17 @@ _reader = None
 def _get_reader():
     global _reader
     if _reader is None:
-        import easyocr
+        try:
+            import easyocr
+        except ImportError:
+            st.error("⚠️ EasyOCR 未安装。截图识别功能需要在本地手动安装依赖：
+
+```
+pip install easyocr
+```
+
+在线版（Streamlit Cloud）不支持此功能，请切换其他数据源。")
+            st.stop()
         # Show a one-time status message on first load
         st.info("🔄 EasyOCR 正在加载模型（首次使用会下载约 100MB 模型文件）...")
         progress_placeholder = st.empty()
@@ -413,6 +423,11 @@ def render_ocr_entry_form(game_name: str = "国服玩家", tag_line: str = "CN")
         或<strong>结算页面</strong>的完整数据表。上传截图后自动识别数值，建议使用清晰的全屏截图。</p>
     </div>
     """, unsafe_allow_html=True)
+
+    try:
+        import easyocr
+    except ImportError:
+        st.warning("⚠️ 截图识别需要 EasyOCR，当前环境未安装。如需使用此功能，请在本地运行项目：pip install easyocr。在线版（Streamlit Cloud）请切换其他数据源。")
 
     # Initialize session state
     if "ocr_entries" not in st.session_state:
