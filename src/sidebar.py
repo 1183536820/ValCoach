@@ -49,7 +49,7 @@ def _render_user_panel():
     if st.sidebar.button("🚪 退出登录"):
         st.session_state.user = None
         st.session_state.page = "analysis"
-        st.rerun()
+        st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
 
 
 def _render_auth_panel():
@@ -68,7 +68,7 @@ def _render_auth_panel():
                     if user:
                         st.session_state.user = user
                         st.success("登录成功")
-                        st.rerun()
+                        st.rerun() if hasattr(st, "rerun") else st.experimental_rerun()
                     else:
                         st.error("邮箱或密码错误")
         with tab2:
