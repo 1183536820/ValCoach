@@ -28,9 +28,14 @@ def _rerun():
     else:
         st.experimental_rerun()
 
+
+def _is_valid_api_key(key: str) -> bool:
+    return bool(key and key.strip() and key != "RGAPI-你的密钥")
+
 import src.api_client as api_client
 from src.api_client import get_puuid, get_match_history, get_match_details
 import src.local_client as local_client
+from src.sidebar import render_sidebar
 from src.metrics import calculate_metrics, aggregate_metrics, extract_match_extra, calculate_map_hero_breakdown
 from src.baseline import load_baseline
 from src.diagnosis import diagnose, diagnose_map_hero_weakness, diagnose_strengths
@@ -147,7 +152,7 @@ if RIO_TXT_CONTENT:
                 st.caption("Public file — used by client-side Riot API calls.")
                 st.stop()
         except Exception:
-            pass
+            logger.warning("Failed to parse query params for riot.txt fallback")
 
 st.markdown("""
 <meta name="description" content="ValCoach - 《无畏契约》AI 赛后诊断工具。分析你的排位赛数据，找出短板，提升段位。">
@@ -168,138 +173,9 @@ if RIO_TXT_CONTENT:
 </script>
 """, height=0)
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+from src.styles import APP_CSS
 
-    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-
-    .main-header { text-align: center; padding: 2.5rem 1rem 1.5rem; }
-    .main-header h1 { font-size: 3.2rem; background: linear-gradient(135deg, #ff4655, #ff6b81, #ff8a9e); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0.5rem; letter-spacing: -0.5px; }
-    .main-header p { font-size: 1.15rem; color: #999; font-weight: 400; }
-
-    .stButton > button {
-        background: linear-gradient(135deg, #ff4655, #e63946);
-        color: white; border: none; font-size: 1.05rem;
-        padding: 0.6rem 2rem; width: 100%;
-        border-radius: 8px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(255,70,85,0.3);
-    }
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #e63946, #c5303c);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(255,70,85,0.4);
-    }
-
-    .glass-card {
-        background: rgba(255,255,255,0.04);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border-radius: 16px;
-        padding: 24px;
-        margin: 12px 0;
-        border: 1px solid rgba(255,255,255,0.08);
-        transition: all 0.3s ease;
-    }
-    .glass-card:hover {
-        border-color: rgba(255,70,85,0.3);
-        box-shadow: 0 8px 32px rgba(255,70,85,0.08);
-    }
-    .glass-card h3 { color: #ff4655; margin-bottom: 8px; font-weight: 600; }
-    .glass-card p { color: #aaa; font-size: 14px; line-height: 1.6; }
-
-    .footer {
-        text-align: center;
-        color: #555;
-        font-size: 0.8rem;
-        padding: 2rem 0;
-        border-top: 1px solid rgba(255,255,255,0.05);
-        margin-top: 2rem;
-    }
-
-    .step-card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.06);
-        border-radius: 12px;
-        padding: 20px 16px;
-        text-align: center;
-        transition: all 0.3s ease;
-        height: 100%;
-    }
-    .step-card:hover {
-        border-color: rgba(255,70,85,0.25);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 24px rgba(255,70,85,0.06);
-    }
-    .step-card h4 { color: #ff4655; font-size: 1.6rem; margin: 0 0 8px; }
-    .step-card p { color: #ccc; font-size: 0.9rem; margin: 4px 0; }
-    .step-card .step-label { font-weight: 600; color: #e0e0e0; font-size: 0.95rem; }
-
-    .premium-lock {
-        background: linear-gradient(135deg, rgba(255,70,85,0.08), rgba(255,70,85,0.03));
-        border-radius: 16px;
-        padding: 32px;
-        text-align: center;
-        margin: 20px 0;
-        border: 1px solid rgba(255,70,85,0.2);
-    }
-    .premium-lock h3 { color: #ff4655; font-size: 1.4rem; }
-    .feature-list { list-style: none; padding: 0; margin: 16px 0; }
-    .feature-list li { padding: 10px 0; color: #ccc; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-    .feature-list li:last-child { border-bottom: none; }
-
-    .source-badge {
-        display: inline-block;
-        padding: 3px 10px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        margin-left: 8px;
-    }
-    .source-badge.local { background: rgba(76,175,80,0.15); color: #66bb6a; }
-    .source-badge.riot { background: rgba(255,70,85,0.15); color: #ff4655; }
-    .source-badge.demo { background: rgba(255,193,7,0.15); color: #ffd54f; }
-
-    div[data-testid="stRadio"] > label { font-weight: 600; font-size: 0.9rem; color: #aaa; margin-bottom: 8px; }
-    div[data-testid="stRadio"] > div { gap: 4px; }
-    div[data-testid="stRadio"] > div label {
-        padding: 8px 14px;
-        border-radius: 8px;
-        transition: all 0.2s ease;
-        background: transparent;
-    }
-    div[data-testid="stRadio"] > div label:hover { background: rgba(255,255,255,0.04); }
-
-    div[data-testid="stTextInput"] label { font-weight: 500; color: #ccc; }
-    div[data-testid="stTextInput"] input {
-        border-radius: 8px;
-        border: 1px solid rgba(255,255,255,0.1);
-        background: rgba(0,0,0,0.3);
-        padding: 10px 14px;
-        color: #e0e0e0;
-        transition: border-color 0.2s ease;
-    }
-    div[data-testid="stTextInput"] input:focus {
-        border-color: #ff4655;
-        box-shadow: 0 0 0 2px rgba(255,70,85,0.15);
-    }
-
-    .status-msg {
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin: 8px 0;
-        font-size: 14px;
-    }
-
-    .report-container {
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid rgba(255,255,255,0.08);
-        margin: 20px 0;
-    }
-</style>
-""", unsafe_allow_html=True)
+st.markdown(f"<style>{APP_CSS}</style>", unsafe_allow_html=True)
 
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -314,95 +190,10 @@ if "report_metrics" not in st.session_state:
 if "report_strengths" not in st.session_state:
     st.session_state.report_strengths = None
 
-st.sidebar.markdown("""<i class="fas fa-user-lock" style="margin-right:4px;"></i> **账户**""", unsafe_allow_html=True)
-
-if st.session_state.user:
-    tier_label = st.session_state.user.get("tier", "免费")
-    display = f"<i class='fas fa-user' style='margin-right:4px;'></i> {st.session_state.user['email']}"
-    if tier_label == "admin":
-        display += " <i class='fas fa-crown' style='color:#ffd700;'></i>"
-    st.sidebar.markdown(f"<div style='padding:10px 14px;background:rgba(76,175,80,0.08);border-radius:10px;border-left:3px solid #4caf50;color:#a5d6a7;font-size:0.85rem;'>{display}<br><span style='color:#888;font-size:0.75rem;'>{tier_label.upper()}</span></div>", unsafe_allow_html=True)
-    col_a, col_b = st.sidebar.columns(2)
-    if col_a.button("📊 分析"):
-        st.session_state.page = "analysis"
-    if col_b.button("📋 历史"):
-        st.session_state.page = "history"
-    if st.sidebar.button("🚪 退出登录"):
-        st.session_state.user = None
-        st.session_state.page = "analysis"
-        _rerun()
-else:
-    with st.sidebar.expander("登录 / 注册", expanded=True):
-        tab1, tab2 = st.tabs(["登录", "注册"])
-        with tab1:
-            login_email = st.text_input("邮箱", key="login_email")
-            login_pwd = st.text_input("密码", type="password", key="login_pwd")
-            if st.button("登录", key="login_btn"):
-                user = db.login_user(login_email, login_pwd)
-                if user:
-                    st.session_state.user = user
-                    logger.info(f"User logged in: {login_email}")
-                    st.success("登录成功")
-                    _rerun()
-                else:
-                    st.error("邮箱或密码错误")
-        with tab2:
-            reg_email = st.text_input("邮箱", key="reg_email")
-            reg_pwd = st.text_input("密码", type="password", key="reg_pwd")
-            if st.button("注册", key="reg_btn"):
-                user_id = db.register_user(reg_email, reg_pwd)
-                if user_id:
-                    logger.info(f"User registered: {reg_email}")
-                    st.success("注册成功，请登录")
-                else:
-                    st.error("该邮箱已被注册")
-
-st.sidebar.markdown("---")
-if st.sidebar.button("🎥 视频分析", use_container_width=True):
-    st.session_state.page = "video_analysis"
-
-data_source = st.sidebar.radio(
-    "📡 数据来源",
-    options=["🌐 Riot API（国际服）", "💻 本地客户端", "🎮 演示数据"],
-    index=0,
-    key="data_source",
-    help="选择数据获取方式",
-)
+render_sidebar(ADMIN_EMAILS, _is_valid_api_key)
+data_source = st.session_state.get("data_source", "🌐 Riot API（国际服）")
 demo_mode = (data_source == "🎮 演示数据")
 local_mode = (data_source == "💻 本地客户端")
-
-if st.session_state.user and st.session_state.user.get("email") in ADMIN_EMAILS:
-    with st.sidebar.expander("🛠 管理员工具", expanded=False):
-        st.caption("仅管理员可见")
-        if st.button("🔄 更新基准数据"):
-            try:
-                from scripts.update_baseline import update_baseline
-                api_key = os.getenv("RIOT_API_KEY")
-                if api_key and api_key != "RGAPI-你的密钥":
-                    api_client.RIOT_API_KEY = api_key
-                    with st.spinner("正在从Riot API拉取高分玩家数据..."):
-                        update_baseline()
-                    st.success("基准数据已更新！")
-                else:
-                    st.error("请先配置有效的 RIOT_API_KEY")
-            except Exception as e:
-                st.error(f"更新失败: {str(e)}")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### <i class='fas fa-info-circle' style='margin-right:4px;'></i> 关于 ValCoach", unsafe_allow_html=True)
-st.sidebar.markdown("""
-ValCoach 是一款基于 AI 的《无畏契约》赛后诊断工具。
-
-- 📊 6项核心指标分析
-- 🎯 智能短板诊断
-- 📈 历史趋势追踪
-- 🗺️ 地图/英雄专项分析
-""")
-
-if not st.session_state.user:
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### <i class='fas fa-crown' style='margin-right:4px;color:#ffd700;'></i> 管理员体验账号", unsafe_allow_html=True)
-    st.sidebar.info("邮箱: `admin@valcoach.gg`\n密码: `admin123`")
 
 if st.session_state.page == "history" and st.session_state.user:
     st.markdown("# <i class='fas fa-history' style='margin-right:8px;'></i> 我的历史报告", unsafe_allow_html=True)
@@ -651,7 +442,7 @@ elif st.session_state.page == "analysis":
 
             else:  # Riot API (国际服)
                 api_key = os.getenv("RIOT_API_KEY")
-                if not api_key or api_key == "RGAPI-你的密钥":
+                if not _is_valid_api_key(api_key):
                     st.error("⚠️ 请先在 `.env` 文件中配置有效的 RIOT_API_KEY。")
                     st.markdown("前往 [Riot Developer Portal](https://developer.riotgames.com/) 获取 API Key")
                 else:
@@ -793,68 +584,9 @@ elif st.session_state.page == "analysis":
                         progress_bar.empty()
                         status_text.empty()
 
-    if not _has_full_access(st.session_state.user) and st.session_state.report_html:
-        st.markdown("""
-        <div class="premium-lock">
-            <h3><i class="fas fa-crown" style="margin-right:8px;"></i>解锁完整报告</h3>
-            <p style="color:#ccc; margin: 16px 0;">付费后可解锁以下所有功能：</p>
-            <ul class="feature-list">
-                <li><i class="fas fa-brain" style="width:20px;"></i> 完整短板诊断（含差距百分比和改进建议）</li>
-                <li><i class="fas fa-thumbs-up" style="width:20px;"></i> 正向优势反馈（表扬文案）</li>
-                <li><i class="fas fa-chart-line" style="width:20px;"></i> ACS/KAST 历史趋势图</li>
-                <li><i class="fas fa-map" style="width:20px;"></i> 地图/英雄专项分析</li>
-                <li><i class="fas fa-file-pdf" style="width:20px;"></i> PDF 报告下载</li>
-                <li><i class="fas fa-share-alt" style="width:20px;"></i> 分享卡片生成</li>
-                <li><i class="fas fa-envelope" style="width:20px;"></i> 邮件自动发送</li>
-            </ul>
-            <div class="price">¥9.9 <span style="font-size:1rem;font-weight:400;color:#999;">/ 份</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-        if st.session_state.user and PAYMENT_AVAILABLE:
-            if st.button("💳 立即支付 ¥9.9 解锁", key="pay_btn"):
-                try:
-                    success_url = f"{os.getenv('BASE_URL', 'http://localhost:8501')}/"
-                    cancel_url = f"{os.getenv('BASE_URL', 'http://localhost:8501')}/"
-                    checkout_url = create_checkout_session(st.session_state.user["id"], success_url, cancel_url)
-                    if checkout_url:
-                        st.markdown(f"[点击前往支付]({checkout_url})")
-                except Exception as e:
-                    logger.error(f"Payment error: {str(e)}")
-                    st.error(f"支付创建失败: {str(e)}")
-        elif not st.session_state.user:
-            st.info("请先登录后再支付")
-
-    if _has_full_access(st.session_state.user) and st.session_state.report_html:
-        st.markdown("---")
-        st.markdown("### 📤 交付工具")
-        action_cols = st.columns(3)
-
-        with action_cols[0]:
-            pdf_path = generate_pdf_report(st.session_state.report_html, st.session_state.report_player or "report")
-            if pdf_path:
-                with open(pdf_path, "rb") as f:
-                    st.download_button("📥 下载 PDF", data=f, file_name=os.path.basename(pdf_path), mime="application/pdf")
-
-        with action_cols[1]:
-            if st.session_state.report_metrics and st.session_state.report_strengths:
-                share_path = build_share_card(
-                    st.session_state.report_player or "Player",
-                    st.session_state.report_metrics,
-                    st.session_state.report_strengths,
-                )
-                if share_path:
-                    with open(share_path, "rb") as f:
-                        st.download_button("📤 分享卡片", data=f, file_name=os.path.basename(share_path), mime="image/png")
-
-        with action_cols[2]:
-            if st.session_state.user and MAILER_AVAILABLE:
-                user_email = st.session_state.user.get("email", "")
-                if st.button("📧 发送到邮箱"):
-                    try:
-                        send_report_email(user_email, st.session_state.report_html)
-                        st.success(f"报告已发送到 {user_email}")
-                    except Exception as e:
-                        st.error(f"发送失败: {str(e)}")
+    from src.upsell import render_upsell_banner, render_delivery_tools
+    render_upsell_banner()
+    render_delivery_tools()
 
 st.markdown("---")
 st.markdown(

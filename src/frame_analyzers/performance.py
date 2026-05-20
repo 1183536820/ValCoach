@@ -44,7 +44,7 @@ class PerformanceAnalyzer:
     def __init__(self, video_path: str):
         self.video_path = video_path
 
-    def analyze(self, progress_callback=None) -> PerformanceResult:
+    def analyze(self, progress_callback=None, sample_interval: int = 1) -> PerformanceResult:
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             raise ValueError(f"Cannot open video: {self.video_path}")
@@ -57,10 +57,12 @@ class PerformanceAnalyzer:
         result = PerformanceResult(total_frames=total_frames)
 
         prev_gray = None
+        prev_valid_frame = None
         fps_samples = []
         stutter_candidates = []
 
-        for i in range(total_frames):
+        for i in range(0, total_frames, sample_interval):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
             ret, frame = cap.read()
             if not ret:
                 break
@@ -94,7 +96,7 @@ class PerformanceAnalyzer:
                 stutter_candidates.append(i)
             prev_gray = gray
 
-            if progress_callback and i % 60 == 0:
+            if progress_callback and i % max(1, 60 * sample_interval) == 0:
                 progress_callback(i / total_frames)
 
         cap.release()

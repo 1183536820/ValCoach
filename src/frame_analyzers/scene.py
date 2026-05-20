@@ -33,7 +33,7 @@ class SceneAnalyzer:
     def __init__(self, video_path: str):
         self.video_path = video_path
 
-    def analyze(self, progress_callback=None) -> SceneResult:
+    def analyze(self, progress_callback=None, sample_interval: int = 1) -> SceneResult:
         cap = cv2.VideoCapture(self.video_path)
         if not cap.isOpened():
             raise ValueError(f"Cannot open video: {self.video_path}")
@@ -46,7 +46,8 @@ class SceneAnalyzer:
         transitions = []  # frame indices where scene changes
         prev_mean = 0.0
 
-        for i in range(total_frames):
+        for i in range(0, total_frames, sample_interval):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
             ret, frame = cap.read()
             if not ret:
                 break
@@ -60,7 +61,7 @@ class SceneAnalyzer:
 
             prev_mean = mean_val
 
-            if progress_callback and i % 60 == 0:
+            if progress_callback and i % max(1, 60 * sample_interval) == 0:
                 progress_callback(i / total_frames)
 
         cap.release()

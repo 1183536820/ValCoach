@@ -10,6 +10,14 @@ from .frame_analyzers.scene import SceneAnalyzer, SceneResult
 from .frame_analyzers.crosshair import CrosshairAnalyzer, CrosshairMetrics
 
 
+# Default sample intervals for each analyzer
+# Performance: 1 = full frame analysis (best accuracy)
+# Scene: 6 = ~10fps at 60fps (black screens span many frames)
+# Crosshair: samples internally at ~4fps
+PERF_SAMPLE_INTERVAL = 1
+SCENE_SAMPLE_INTERVAL = 6
+
+
 @dataclass
 class VideoAnalysisResult:
     performance: Optional[PerformanceResult] = None
@@ -35,6 +43,8 @@ class VideoAnalyzer:
         skip_performance: bool = False,
         skip_scene: bool = False,
         skip_crosshair: bool = False,
+        perf_sample_interval: int = PERF_SAMPLE_INTERVAL,
+        scene_sample_interval: int = SCENE_SAMPLE_INTERVAL,
     ) -> VideoAnalysisResult:
         """Run selected analyzers and merge results."""
         result = VideoAnalysisResult()
@@ -49,7 +59,8 @@ class VideoAnalyzer:
                 _report("performance", 0.0)
                 perf = PerformanceAnalyzer(self.video_path)
                 perf_result = perf.analyze(
-                    progress_callback=lambda p: _report("performance", p * 0.35)
+                    progress_callback=lambda p: _report("performance", p * 0.35),
+                    sample_interval=perf_sample_interval,
                 )
                 result.performance = perf_result
                 result.total_frames = perf_result.total_frames
@@ -69,7 +80,8 @@ class VideoAnalyzer:
                 _report("scene", 0.35)
                 scene = SceneAnalyzer(self.video_path)
                 scene_result = scene.analyze(
-                    progress_callback=lambda p: _report("scene", 0.35 + p * 0.25)
+                    progress_callback=lambda p: _report("scene", 0.35 + p * 0.25),
+                    sample_interval=scene_sample_interval,
                 )
                 result.scene = scene_result
                 if result.video_fps <= 0 and scene_result.rounds:

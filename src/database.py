@@ -5,6 +5,15 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from .logger import get_logger
+
+logger = get_logger()
+
+VALID_METRICS = frozenset({
+    "kda", "acs", "kast", "headshot_percent",
+    "first_blood_rate", "econ_rating",
+})
+
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "data",
@@ -110,16 +119,19 @@ def login_user(email: str, password: str) -> Optional[Dict[str, Any]]:
         )
         row = cursor.fetchone()
         if row is None:
+            logger.warning(f"Login failed: unknown email {email}")
             return None
 
         stored = row["password"]
         # Check if stored hash is a modern werkzeug hash (contains $)
         if len(stored) >= 20 and "$" in stored:
             if not check_password_hash(stored, password):
+                logger.warning(f"Login failed: wrong password for {email}")
                 return None
         else:
             # Legacy plaintext comparison
             if stored != password:
+                logger.warning(f"Login failed: wrong password for {email} (legacy)")
                 return None
             # Auto-upgrade legacy password to hashed version
             hashed = generate_password_hash(password)
@@ -128,6 +140,7 @@ def login_user(email: str, password: str) -> Optional[Dict[str, Any]]:
                 (hashed, row["id"])
             )
 
+        logger.info(f"Login success: {email}")
         return {
             "id": row["id"],
             "email": row["email"],
@@ -185,15 +198,18 @@ def save_match_records(puuid: str, game_name: str, tag_line: str, matches_data: 
 
 
 def get_player_history(puuid: str, metric: str, limit: int = 20) -> List[Dict[str, Any]]:
+    if metric not in VALID_METRICS:
+        raise ValueError(f"Invalid metric column: {metric}")
     with _get_conn() as conn:
-        cursor = conn.execute("""
-            SELECT m.{metric} as value, m.game_start_timestamp as date, m.agent_played, m.map_name, m.won
+        cursor = conn.execute(f"""
+            SELECT m.{metric} as value, m.game_start_timestamp as date,
+                   m.agent_played, m.map_name, m.won
             FROM match_history m
             JOIN player p ON m.player_id = p.id
             WHERE p.puuid = ? AND m.{metric} IS NOT NULL
             ORDER BY m.game_start_timestamp ASC
             LIMIT ?
-        """.format(metric=metric), (puuid, limit))
+        """, (puuid, limit))
         return [dict(row) for row in cursor.fetchall()]
 
 

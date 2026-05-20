@@ -12,6 +12,7 @@ import numpy as np
 
 from .video_analyzer import VideoAnalysisResult
 from .video_diagnosis import diagnose_video
+from .styles import VIDEO_REPORT_CSS
 
 
 def _build_fps_chart(result: VideoAnalysisResult) -> str:
@@ -238,46 +239,7 @@ def generate_video_report(result: VideoAnalysisResult) -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ValCoach 视频分析报告</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-            color: #e0e0e0;
-            min-height: 100vh;
-            padding: 20px;
-        }}
-        .container {{ max-width: 1000px; margin: 0 auto; }}
-        .card {{
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 30px;
-            margin-bottom: 24px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }}
-        .header {{ text-align: center; padding: 40px 30px; }}
-        .header h1 {{ font-size: 28px; background: linear-gradient(90deg, #ff4655, #ff6b81); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 8px; }}
-        .header .subtitle {{ color: #888; font-size: 14px; }}
-        .section-title {{ font-size: 20px; margin-bottom: 20px; color: #e0e0e0; padding-left: 12px; border-left: 3px solid #ff4655; }}
-        .chart-container {{ display: flex; justify-content: center; margin: 16px 0; background: rgba(0, 0, 0, 0.2); border-radius: 12px; padding: 16px; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 16px 0; background: rgba(0, 0, 0, 0.2); border-radius: 12px; overflow: hidden; }}
-        th {{ background: rgba(255, 70, 85, 0.15); padding: 10px 14px; text-align: left; font-weight: 600; font-size: 14px; color: #ccc; }}
-        td {{ padding: 10px 14px; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 14px; }}
-        tr:hover {{ background: rgba(255, 255, 255, 0.03); }}
-        .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; }}
-        .metric-card {{ background: rgba(0, 0, 0, 0.2); border-radius: 12px; padding: 20px; text-align: center; }}
-        .metric-value {{ font-size: 32px; font-weight: 700; color: #ff4655; }}
-        .metric-label {{ font-size: 13px; color: #888; margin-top: 4px; }}
-        .diagnosis-card {{ background: rgba(0, 0, 0, 0.2); border-radius: 10px; padding: 20px; margin: 16px 0; }}
-        .diagnosis-header {{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }}
-        .metric-name {{ font-size: 16px; font-weight: 600; color: #e0e0e0; }}
-        .severity-badge {{ display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }}
-        .diagnosis-detail {{ font-size: 13px; color: #888; margin-bottom: 8px; }}
-        .diagnosis-advice {{ font-size: 14px; line-height: 1.6; color: #ccc; }}
-        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center; font-size: 12px; color: #666; }}
-        @media (max-width: 600px) {{ body {{ padding: 10px; }} .card {{ padding: 16px; }} .header h1 {{ font-size: 22px; }} .metric-value {{ font-size: 26px; }} }}
-    </style>
+    <style>{VIDEO_REPORT_CSS}</style>
 </head>
 <body>
     <div class="container">
