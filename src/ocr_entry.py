@@ -48,13 +48,7 @@ def _get_reader():
         try:
             import easyocr
         except ImportError:
-            st.error("⚠️ EasyOCR 未安装。截图识别功能需要在本地手动安装依赖：
-
-```
-pip install easyocr
-```
-
-在线版（Streamlit Cloud）不支持此功能，请切换其他数据源。")
+            st.error("⚠️ EasyOCR 未安装。截图识别功能需要在本地手动安装依赖：\n\n```\npip install easyocr\n```\n\n在线版（Streamlit Cloud）不支持此功能，请切换其他数据源。")
             st.stop()
         # Show a one-time status message on first load
         st.info("🔄 EasyOCR 正在加载模型（首次使用会下载约 100MB 模型文件）...")
