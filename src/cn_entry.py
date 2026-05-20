@@ -123,7 +123,7 @@ def render_manual_entry_form() -> None:
                 "won": random.choice([True, False]),
             })
         st.session_state.cn_entries = demo_entries
-        st.rerun()
+        st.experimental_rerun()
 
     st.markdown("---")
 
@@ -213,12 +213,12 @@ def render_manual_entry_form() -> None:
     add_col, _ = st.columns([1, 3])
     if add_col.button("➕ 添加一场比赛", use_container_width=True):
         entries.append(_get_default_entry())
-        st.rerun()
+        st.experimental_rerun()
 
     # Remove pending entry
     if to_remove is not None and to_remove < len(entries):
         entries.pop(to_remove)
-        st.rerun()
+        st.experimental_rerun()
 
     st.markdown("---")
     st.markdown(f"<p style='color:#888;font-size:0.85rem;'>已录入 <b>{len(entries)}</b> 场比赛（点击下方「生成诊断报告」开始分析）</p>",

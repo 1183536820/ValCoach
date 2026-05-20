@@ -41,6 +41,7 @@ from src.baseline import load_baseline
 from src.diagnosis import diagnose, diagnose_map_hero_weakness, diagnose_strengths
 from src.report_generator import generate_report, build_share_card, generate_pdf_report
 from src.cn_entry import render_manual_entry_form
+from src.ocr_entry import render_ocr_entry_form
 import src.database as db
 from pages.video_analysis import video_analysis_page
 try:
@@ -291,13 +292,15 @@ elif st.session_state.page == "analysis":
 
     analyze_button = st.button("生成诊断报告", type="primary", use_container_width=True)
 
-    # Manual entry form — always visible when this data source is selected
+    # Manual entry / OCR forms — always visible when those data sources are selected
     if data_source == "📝 手动输入":
         render_manual_entry_form()
+    elif data_source == "📸 截图识别":
+        render_ocr_entry_form(game_name, tag_line)
 
     if analyze_button:
-        # Manual entry mode: game_name/tag_line are optional
-        if data_source == "📝 手动输入":
+        # Manual entry/OCR modes: game_name/tag_line are optional
+        if data_source in ("📝 手动输入", "📸 截图识别"):
             if not game_name:
                 game_name = "国服玩家"
             if not tag_line:
@@ -462,6 +465,18 @@ elif st.session_state.page == "analysis":
                 finally:
                     progress_bar.empty()
                     status_text.empty()
+
+            elif data_source == "📸 截图识别":
+                from src.ocr_entry import _validate_ocr_entries, _run_ocr_analysis
+                ocr_entries = st.session_state.get("ocr_entries", [])
+                err = _validate_ocr_entries(ocr_entries)
+                if err:
+                    st.error(f"❌ {err}")
+                    st.stop()
+                if not ocr_entries:
+                    st.warning("请先上传截图并识别数据，或切换到其他数据源。")
+                    st.stop()
+                _run_ocr_analysis()
 
             elif data_source == "📝 手动输入":
                 from src.cn_entry import process_entries

@@ -127,80 +127,148 @@ def video_analysis_page():
 
     # --- Tab 2: Live Capture ---
     with tab2:
-        st.info("🔴 实时采集功能：捕获当前屏幕画面进行分析")
+        st.info("🔴 实时采集：录制屏幕画面，点击「开始录制」和「停止录制」控制采集过程")
 
-        duration = st.slider("采集时长 (秒)", min_value=30, max_value=600, value=180, step=30)
+        # ── Session state for capture ──
+        if "capture_running" not in st.session_state:
+            st.session_state.capture_running = False
+            st.session_state.capture_path = None
+            st.session_state.flag_path = None
+            st.session_state.capture_start = 0
+            st.session_state.capture_thread = None
 
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            start_capture = st.button("⏺ 开始采集", type="primary", use_container_width=True)
-        with col2:
-            st.caption("采集期间请确保《无畏契约》处于前台运行状态")
-
-        if start_capture:
+        # ── Helper: background capture worker ──
+        def _capture_worker(path: str, flag_path: str, fps: int = 20):
+            import mss
+            import cv2
+            import numpy as np
+            monitor = {"top": 0, "left": 0, "width": 1920, "height": 1080}
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            out = cv2.VideoWriter(path, fourcc, fps, (1920, 1080))
             try:
-                import mss
-                import cv2
-                import numpy as np
-            except ImportError:
-                st.error("实时采集需要安装 mss 库: `pip install mss`")
-                st.stop()
-
-            progress_bar = st.progress(0, text="准备采集...")
-            status_text = st.empty()
-
-            try:
-                # Use temp file for live capture
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                    tmp_path = tmp.name
-
-                # Screen capture loop
-                monitor = {"top": 0, "left": 0, "width": 1920, "height": 1080}
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(tmp_path, fourcc, 30.0, (1920, 1080))
-
                 with mss.mss() as sct:
-                    start_time = time.time()
-                    frame_count = 0
-                    total_frames = duration * 30
-
-                    while time.time() - start_time < duration:
-                        img = sct.grab(monitor)
-                        frame = np.array(img)
-                        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-                        out.write(frame)
-                        frame_count += 1
-
-                        elapsed = time.time() - start_time
-                        pct = min(elapsed / duration, 1.0)
-                        progress_bar.progress(int(pct * 100))
-                        status_text.info(f"采集进度: {elapsed:.0f}/{duration} 秒 ({frame_count} 帧)")
-
+                    while os.path.exists(flag_path):
+                        frame = np.array(sct.grab(monitor))
+                        out.write(cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR))
+                        time.sleep(1 / fps)
+            finally:
                 out.release()
 
-                progress_bar.empty()
-                status_text.success(f"采集完成！共 {frame_count} 帧")
+        if not st.session_state.capture_running:
+            # ── Show previous report if available ──
+            if st.session_state.get("video_report_html"):
+                if st.button("📄 查看上次分析报告", use_container_width=True):
+                    _render_report(st.session_state.video_report_html)
+                st.markdown("---")
 
-                # Analyze captured video
-                st.info("正在分析采集的视频...")
-                html_report = _run_analysis(tmp_path)
-                if html_report:
-                    st.success("✅ 分析完成！")
-                    st.session_state.video_report_html = html_report
-                    _render_report(html_report)
+            if st.button("⏺ 开始录制", type="primary", use_container_width=True):
+                try:
+                    import mss
+                    import cv2
+                    import numpy as np
+                except ImportError:
+                    st.error("需要安装 mss 和 opencv-python: `pip install mss opencv-python-headless`")
+                    st.stop()
+
+                import threading
+
+                path = tempfile.mktemp(suffix=".mp4")
+                flag_path = path + ".flag"
+                open(flag_path, "w").close()  # flag file exists = keep recording
+
+                t = threading.Thread(
+                    target=_capture_worker, args=(path, flag_path), daemon=True
+                )
+                t.start()
+
+                st.session_state.capture_running = True
+                st.session_state.capture_path = path
+                st.session_state.flag_path = flag_path
+                st.session_state.capture_thread = t
+                st.session_state.capture_start = time.time()
+                st.experimental_rerun()
+
+        else:
+            elapsed = time.time() - st.session_state.capture_start
+            mins, secs = divmod(int(elapsed), 60)
+
+            st.markdown(f"""
+            <div style="text-align:center; padding:20px; border:2px solid #ff4444;
+                        border-radius:12px; background:rgba(255,0,0,0.05);">
+                <div style="font-size:48px; margin-bottom:10px;">🔴</div>
+                <div style="font-size:20px; font-weight:bold;">正在录制...</div>
+                <div style="font-size:28px; color:#ff6666; font-weight:bold; margin:8px 0;">
+                    {mins:02d}:{secs:02d}</div>
+                <div style="font-size:13px; color:#888;">停止后自动进行分析</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            if st.button("⏹ 停止录制", type="primary", use_container_width=True):
+                # Signal the background thread to stop
+                fp = st.session_state.flag_path
+                if fp and os.path.exists(fp):
+                    os.remove(fp)
+
+                # Wait for thread to finish writing
+                thread = st.session_state.capture_thread
+                if thread:
+                    thread.join(timeout=10)
+
+                st.session_state.capture_running = False
+
+                # ── Run video analysis pipeline with progress ──
+                video_path = st.session_state.capture_path
+                from src.video_analyzer import VideoAnalyzer
+
+                progress_bar = st.progress(0, text="正在分析视频...")
+                status_text = st.empty()
+
+                def on_progress(stage: str, pct: float):
+                    status_texts = {
+                        "performance": "正在分析帧率与性能...",
+                        "scene": "正在检测回合边界...",
+                        "crosshair": "正在检测开枪与反应时间...",
+                        "done": "分析完成！",
+                        "error": "分析出错",
+                    }
+                    status_text.info(status_texts.get(stage, f"处理中... ({stage})"))
+                    progress_bar.progress(min(int(pct * 100), 100))
 
                 try:
-                    os.unlink(tmp_path)
+                    analyzer = VideoAnalyzer(video_path)
+                    result = analyzer.analyze(progress_callback=on_progress)
+
+                    progress_bar.empty()
+                    status_text.empty()
+
+                    if result.error:
+                        st.error(f"❌ 分析出错: {result.error}")
+                    else:
+                        html_report = generate_video_report(result)
+                        if html_report:
+                            st.success("✅ 分析完成！")
+                            st.session_state.video_report_html = html_report
+                            _render_report(html_report)
+                        else:
+                            st.error("❌ 报告生成失败")
+                except Exception as e:
+                    progress_bar.empty()
+                    status_text.empty()
+                    logger.error(f"Live capture analysis error: {traceback.format_exc()}")
+                    st.error(f"❌ 分析失败: {str(e)}")
+
+                # Cleanup temp file
+                try:
+                    if video_path and os.path.exists(video_path):
+                        os.unlink(video_path)
                 except Exception:
                     pass
 
-            except Exception as e:
-                logger.error(f"Live capture error: {traceback.format_exc()}")
-                st.error(f"❌ 采集失败: {str(e)}")
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
+                # No rerun here — report stays visible
+
+            # Poll for UI updates (elapsed time refreshes ~every 2s)
+            time.sleep(2)
+            st.experimental_rerun()
 
 
 if __name__ == "__main__":
