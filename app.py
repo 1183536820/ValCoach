@@ -40,6 +40,7 @@ from src.metrics import calculate_metrics, aggregate_metrics, extract_match_extr
 from src.baseline import load_baseline
 from src.diagnosis import diagnose, diagnose_map_hero_weakness, diagnose_strengths
 from src.report_generator import generate_report, build_share_card, generate_pdf_report
+from src.cn_entry import render_manual_entry_form
 import src.database as db
 from pages.video_analysis import video_analysis_page
 try:
@@ -290,8 +291,18 @@ elif st.session_state.page == "analysis":
 
     analyze_button = st.button("生成诊断报告", type="primary", use_container_width=True)
 
+    # Manual entry form — always visible when this data source is selected
+    if data_source == "📝 手动输入":
+        render_manual_entry_form()
+
     if analyze_button:
-        if not game_name or not tag_line:
+        # Manual entry mode: game_name/tag_line are optional
+        if data_source == "📝 手动输入":
+            if not game_name:
+                game_name = "国服玩家"
+            if not tag_line:
+                tag_line = "CN"
+        elif not game_name or not tag_line:
             st.error("请同时输入游戏ID和Tagline。")
         else:
             is_full = _has_full_access(st.session_state.user)
@@ -336,9 +347,21 @@ elif st.session_state.page == "analysis":
                     progress_bar.progress(10)
                     status = local_client.get_local_status()
                     if not status["available"]:
+                        if status.get("reason") == "cn_wegame_version":
+                            st.warning("⚠️ " + status["message"])
+                            st.info("💡 建议切换到「🎮 演示数据」模式或使用视频分析功能。")
+                            st.markdown("""
+                            <div style="background:#1e1e2e;padding:16px;border-radius:10px;margin:12px 0;border-left:3px solid #ff4655;">
+                            <b>📌 为什么国服版不支持本地客户端？</b><br>
+                            腾讯 WeGame 版无畏契约不使用 Riot Client 启动器，因此没有本地 API 接口。
+                            这是国服版与国际版的架构差异，无法通过软件更新解决。
+                            </div>
+                            """, unsafe_allow_html=True)
+                            progress_bar.empty()
+                            status_text.empty()
+                            st.stop()
                         raise local_client.LocalClientError(
-                            "未检测到运行中的无畏契约客户端。\n"
-                            "请先启动游戏，然后重试。"
+                            status.get("message", "未检测到运行中的无畏契约客户端。请先启动游戏，然后重试。")
                         )
 
                     puuid = status["puuid"]
@@ -435,6 +458,50 @@ elif st.session_state.page == "analysis":
                 except Exception as e:
                     logger.error(f"Local client unexpected error: {str(e)}")
                     st.error(f"❌ 未知错误: {str(e)}")
+                    st.error(traceback.format_exc())
+                finally:
+                    progress_bar.empty()
+                    status_text.empty()
+
+            elif data_source == "📝 手动输入":
+                from src.cn_entry import process_entries
+                ok, manual_metrics, manual_extras = process_entries(st.session_state.get("cn_entries", []))
+                if not ok:
+                    st.stop()
+                is_full = _has_full_access(st.session_state.user)
+                progress_bar = st.progress(0, text="正在分析数据...")
+                status_text = st.empty()
+                try:
+                    status_text.info("📊 正在计算指标...")
+                    progress_bar.progress(30)
+                    from src.pipeline import run_analysis_pipeline
+                    report = run_analysis_pipeline(
+                        manual_metrics, manual_extras,
+                        game_name, tag_line, is_full=is_full,
+                    )
+                    if report is None:
+                        st.error("分析失败，请检查输入数据。")
+                    else:
+                        progress_bar.progress(85)
+                        status_text.info("正在生成报告...")
+                        player_display_id = f"{game_name}#{tag_line}"
+                        st.session_state.report_html = report.html
+                        st.session_state.report_player = player_display_id
+                        st.session_state.report_metrics = report.avg_metrics
+                        st.session_state.report_strengths = report.strengths
+                        if st.session_state.user:
+                            try:
+                                db.save_report(st.session_state.user["id"], player_display_id, report.html)
+                                if st.session_state.user.get("tier") != report.tier:
+                                    db.update_user_tier(st.session_state.user["id"], report.tier)
+                            except Exception:
+                                pass
+                        progress_bar.progress(100)
+                        status_text.success(f"分析完成！（手动输入 · 共 {len(manual_metrics)} 场）")
+                        st.components.v1.html(report.html, height=1800, scrolling=True)
+                except Exception as e:
+                    logger.error(f"Manual entry error: {str(e)}")
+                    st.error(f"❌ 分析出错: {str(e)}")
                     st.error(traceback.format_exc())
                 finally:
                     progress_bar.empty()

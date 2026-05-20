@@ -2,6 +2,7 @@ import os
 import time
 import base64
 import logging
+import subprocess
 from typing import Optional, List, Dict, Any, Tuple
 
 import requests
@@ -16,6 +17,28 @@ CLIENT_PLATFORM = "ew0KCSAJInBsYXRmb3JtVHlwZSI6ICJQQyINCn0="  # base64 {"platfor
 
 class LocalClientError(Exception):
     pass
+
+
+def is_valorant_running() -> bool:
+    """Check if VALORANT.exe process is currently running."""
+    try:
+        import psutil
+        for proc in psutil.process_iter(["name"]):
+            try:
+                if proc.info["name"] and "VALORANT" in proc.info["name"].upper():
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
+    except ImportError:
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq VALORANT.exe", "/NH"],
+                capture_output=True, text=True, timeout=5
+            )
+            return "VALORANT.exe" in result.stdout
+        except Exception:
+            return False
 
 
 def find_lockfile() -> Optional[str]:
@@ -142,6 +165,20 @@ def get_local_status() -> Dict[str, Any]:
     """Check if the game client is accessible. Returns status dict."""
     lockfile_path = find_lockfile()
     if not lockfile_path:
+        # Check if Chinese Tencent/WeGame version is running
+        if is_valorant_running():
+            logger.info("VALORANT.exe is running but no Riot Client lockfile found — Chinese WeGame version detected.")
+            return {
+                "available": False,
+                "reason": "cn_wegame_version",
+                "message": (
+                    "检测到无畏契约（WeGame 国服版）正在运行，但国服版本不提供本地 API 接口。\n\n"
+                    "💡 建议方案：\n"
+                    "1. 切换到「🌐 Riot API（国际服）」数据源并使用国际服账号\n"
+                    "2. 使用「🎮 演示数据」模式体验功能\n"
+                    "3. 使用视频分析功能分析你的对局录像"
+                ),
+            }
         return {"available": False, "reason": "lockfile_not_found",
                 "message": "未找到 Riot Client，请先启动无畏契约"}
 

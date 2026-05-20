@@ -90,10 +90,10 @@ def _render_data_source():
     """Data source selector."""
     data_source = st.sidebar.radio(
         "📡 数据来源",
-        options=["🌐 Riot API（国际服）", "💻 本地客户端", "🎮 演示数据"],
+        options=["🌐 Riot API（国际服）", "💻 本地客户端", "📝 手动输入", "🎮 演示数据"],
         index=0,
         key="data_source",
-        help="选择数据获取方式",
+        help="国际服 Riot API 需要 API Key；本地客户端仅支持国际服 Riot Client 版；手动输入适合国服 WeGame 玩家从游戏内填写数据",
     )
     st.session_state.demo_mode = (data_source == "🎮 演示数据")
     st.session_state.local_mode = (data_source == "💻 本地客户端")

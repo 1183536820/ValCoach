@@ -7,6 +7,7 @@ plotly>=5.15.0
 numpy>=1.24.0
 stripe>=5.0.0
 werkzeug>=2.3.0
+psutil>=5.9.0
 opencv-python-headless>=4.8.0
 mss>=9.0.0
 pillow>=10.0.0

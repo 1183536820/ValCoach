@@ -81,6 +81,17 @@ def run_analysis_pipeline(
     strength_results = diagnose_strengths(avg_metrics, baseline_data) if is_full else []
 
     breakdown_data = calculate_map_hero_breakdown(all_match_extras)
+    # Remove entries where map_name or agent is empty/Unknown (manual entry may skip these)
+    if breakdown_data:
+        for mk in list(breakdown_data.keys()):
+            if mk in ("Unknown", "unknown", ""):
+                del breakdown_data[mk]
+            else:
+                for ak in list(breakdown_data[mk].keys()):
+                    if ak in ("Unknown", "unknown", ""):
+                        del breakdown_data[mk][ak]
+                if not breakdown_data[mk]:
+                    del breakdown_data[mk]
     map_hero_results = diagnose_map_hero_weakness(
         breakdown_data, global_avg_acs=avg_metrics.get("ACS", 200)
     ) if is_full else None
